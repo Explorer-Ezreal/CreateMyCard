@@ -8,8 +8,8 @@
 
 **2x2 图标生成前置约束**：普通内容区生成零个 Image，不生成“每行文字配一个图标”的结构。只有环形 Progress 中心和 `S-dual-info` 两个独立对象的分区主视觉可在内容区使用 Image；两座城市的天气也属于 `S-dual-info`，每个天气分区各用 1 个合法天气图标。其余图标仅放按钮区或 CardHeader，继续遵守总数和区域互斥；L/R/盒等现有 Text 标识保留。用户必须明确要求图标本身才可例外，要求展示天气、日期、心率或动作不算。
 
-**2x2 双信息块生成前置约束**：最终展示恰好两个业务对象时立即锁定 `S-dual-info`，root 固定 `padding:8`，直接子组件只能是上下两个 `134×63vp` 内容背板且间距 `8vp`，禁止标题区、底部 `action_area`、Button、ActionUnit 和 TimelineUnit；root、两个内容背板及内部子组件都禁止 `onClick`，事件候选不得改变该布局。用户明确要求且必须保留的动作不能在此布局中静默丢弃，应按尺寸与能力边界改选可承载动作的布局或结束生成。`S-dual-info` 会议背板固定第一行仅放会议标题 `14fp/700`，第二行仅放时间 `12fp/400`；无标题字段且用户未提供名称时使用“会议”，禁止将时间与标题拼成同一行。进入 `S-dual-info` 后全部文字只执行小内容背板规则，禁止继续提取其它 2x2 布局、V01 或 hero 规则。倒计时只作为所属背板第一行 `14fp/700` 的普通主数据。整张 `S-dual-info` 只能选择一套卡片色板：两个背板内的 Text、可染色 Image、Progress 和 Divider 必须使用相同的主内容色 RGB，只允许按角色改变 alpha，禁止按业务分别使用会议橙、设备青等不同主题色。每个背板最多两个 Text，且每个 Text 必须 `maxLines:1`，实际只能形成两行文字；1-2 行文字必须作为一个连续文字组在 `63vp` 背板内垂直居中，不得为不存在的第三行预留高度。文字字符数、是否超过 6 个字不得决定图标是否存在或位置；1-2 项数据且有语义准确、状态安全的候选素材时保留一个右侧图标，固定 `20×20vp` 且距背板右边 `12vp`。只要背板包含 visual，背板就必须是 `Row -> [82vp 文字组, 20vp visual]`，固定 `itemMargin:8`、`justifyContent:start`、`alignItems:center`，左侧文字 Column 固定 `justifyContent:"center"`；无 visual 时才允许背板使用 Column，文字宽度为 `110vp`，背板固定 `justifyContent:"center"`。
-
+**2x2 双信息块前置约束**：最终展示恰好两个独立对象时使用 `S-dual-info`。root `padding:8`，直接包含
+上下两个 `134×63vp` 背板，间距 `8vp`；不增加总标题、公共内容区或动作区。
 **2x2 单业务多字段生成前置约束**：`/data` 下只有一个一级业务根时始终是单业务；同一根内的名称、状态及多个指标不得按字段数拆成 `S-dual-info`。禁止生成单个或残缺的 `134×63vp` `S-dual-info` 内容背板。用户明确要求展示的 1-3 个不同字段必须全部保留并各显示一次；重点只调整顺序和视觉主次。单一大数字焦点最多再带一条辅助信息；需要两条辅助事实时降低主读数字号释放高度。两个同级指标只有都具备可靠比例语义时，才能按 `S-title-dual-column-action` 使用两个固定环形指标列；普通文字、状态或无可靠 total 的指标必须改为纵向标签—值行。三个同级状态使用统一标签—值纵排。视觉行按实际 Row/Column 结构计算，动作不计入信息行。2x4 `W-split-panels` 的左右两个 `132×126vp` 父区必须在各自 `116×110vp` Sub-118 内容区内独立执行同一密度规则。
 
 **2x2 单数值 Hero 安全盒前置约束**：仅当普通 带标题布局 最终可见结构严格为“顶部标题＋中部唯一纯数字主值（可带真实单位）＋底部单动作”时启用。`content_area` 固定 `width:126`、`layoutWeight:1`、`justifyContent:"center"`、`alignItems:"center"`；其内放置独立的 `hero_box Column`，固定 `width:106`、`height:58`并双轴居中，`hero_box` 内只有一个 `value_row Row`，该 Row 固定 `width:106`、`justifyContent:"center"`、`alignItems:"bottom"`。数字和单位整组使用 `38/16fp -> 30/14fp -> 24/12fp -> 20/12fp` 的降档序列：先按 schema `sampleValue` 构造至少三位数字的压力值，再加 20% 宽度余量；宽度超过 106vp 或文字行高超过 58vp 就使用下一档，直至同时通过。不得用截断、省略单位、压缩容器或同时给 `content_area` 设置固定高度替代降档。中部一旦含有日期、时间、状态、说明、第二指标、Progress 或 Image，就不进入本结构，改按对应的普通密度、V08、并列指标或专用骨架处理。本规则不新增 few-shot，也不要从现有睡眠、环图或双指标示例拼装结构。
@@ -22,14 +22,15 @@
 
 **2x2 单日天气日期生成前置约束**：同一天气日同时提供 `date` 和 `weekday` 时，二者属于同一组日期信息，禁止在同一个 Text 中拼接。默认只展示 `weekday`；仅当用户明确要求具体年月日时改为只展示 `date`。标题已经包含“今天/明日”时，内容区不得重复同一日期信息；禁止通过缩小字号、增加行数或裁切来容纳 `date + weekday`。此规则不适用于 2x4。
 
-**2x4 左右双区生成前置约束**：必须先按业务对象实例合并字段，再统计数据块；同一对象的名称、状态和属性固定算一个数据块，禁止按字段拆块。两个业务等权且都需要完整内容区、两个独立业务各有一个直属动作且都能使用 Sub-118-D，或同一语义组需要分成核心结论与属性详情时，锁定 `W-split-panels`：root 固定为 Row、`padding:12`、`itemMargin:12`，直接且只能包含左右两个 `132×126vp` 父区；每区 `padding:8`，内部安全区为 `116×110vp`。每侧从 Sub-118 中选择核心居中、标题单内容、标题双内容、标题内容单按钮、标题双列内容可选按钮或内容双按钮。标题自然高度只参与容量判断；标题至第一内容区 4vp，其余主要区域 6vp。带动作时按钮固定 `116×36vp` 并沉底。禁止卡级公共标题、跨业务公共内容行、卡级动作区和背板外按钮。
-
+**2x4 左右双区前置约束**：两个对象都需要完整内容区、两个独立业务各有一个直属动作且均能使用
+Sub-118-D，或同一主题需要拆为核心结论与属性详情时，使用 `W-split-panels`。root 直接包含左右两个
+`132×126vp` 父区，间距 `12vp`；不增加卡级标题或公共动作区。
 **2x4 主焦点与同行读数前置约束**：`W-content-side-slots` 的内容区按所选 Sub-140 对齐，不得用业务类型覆盖子布局；固定槽内容组可垂直居中、文字保持左对齐。除 Sub-118/Sub-140 明确登记的纵向数值单位结构外，number/integer 与静态真实单位拆分显示时使用同一 Row 的相邻 Text，并执行基线补偿。
 
 **2x4 双列环形指标约束**：Sub-118 的 `title-dual-column-action` 固定使用两个 `54vp` 列和 `8vp` 间距；Sub-140 的同名子布局固定使用两个 `62vp` 列和 `8vp` 间距。每列必须且只能展开一个由 `Progress type:"ring"`、可见值和所属标签组成的环形指标模块；同一行的两个模块使用一致的环径、描边、字号、字重和垂直基线。不得放普通文字列、跨列模块或竖向 Divider。比例语义或压力预算不成立时改用纵向标签—值行及其它子布局。
 
-**2x4 四槽生成前置约束**：最终展示恰好四个适合紧凑固定槽的信息或动作模块时锁定 `W-four-slots`。root 固定 `padding:12`，`276×126vp` 安全内容区完整用于 `2×2` 槽位，四格均为 `132×57vp`，横纵间距均为 `12vp`。禁止卡级标题、空槽、占位和额外一级区域。
-
+**2x4 四槽前置约束**：最终恰好四个同级紧凑模块时使用 `W-four-slots`。四格均为 `132×57vp`，横纵
+间距均为 `12vp`；不增加卡级标题、空槽或额外一级区域。
 **同行文字可见字底校正约束**：2x2 与 2x4 的同一 Row 只要包含不同字号 Text，Row 固定 `alignItems:"bottom"`；每个较小 Text 的 `padding.bottom` 使用 `min(8, ceil((最大字号-自身字号)/4))`，最多补偿 `8vp`。数字与单位 Row 另固定 `itemMargin:2`，数字和单位都使用内容自适应宽度。
 
 **2x4 `W-content-side-slots` 内容节奏前置约束**：内容区必须先选择 Sub-140 子布局，再按其核心居中、标题单内容、标题双内容、带动作、双列、四宫格或双动作规则对齐；不得统一强制居中。固定槽列只放两个真实紧凑模块，同一路径或同一事实只能分配到一个区域。
@@ -38,8 +39,8 @@
 
 **Progress 生成前置约束**：默认不生成 Progress。只有 TaskSpec 的字段描述明确表示百分比、完成度、使用率、电量等比例语义，并且同时存在可验证的固定范围或真实 `total` 时才允许；温度、日期、时间、时长、倒计时、状态、名称和普通数值一律禁止。不得仅因字段是 number/integer、位于小内容背板或示例中存在环图就生成 Progress，也不得自行猜测 `total`；两座城市天气的 `S-dual-info` 分区只能使用合法天气 Image 或无 visual，绝不使用温度进度环。2x2 单业务内容区若只有一个环形 Progress 和至多一行状态文字，两者必须作为一个紧凑组水平居中，承载它们的 Column 固定 `alignItems:"center"`，不得让环和状态沿左边缘排列。
 
-**2x2 双按钮前置约束**：先按用户意图选择动作，再决定骨架。单业务最终保留两个明确动作时，`S-content-dual-action` 优先于单动作或无动作布局；候选中恰有两个事件不等于必须保留两个。root 只能是 Column -> [content_area, action_one, action_two]，禁止 CardHeader。固定闭合为 `38 + 8 + 36 + 8 + 36 = 126vp`。content_area 固定左对齐、顶端对齐；第一行对象与主值合并为 14fp/700 文本，第二行 12fp/400 状态紧随其下。两个按钮分别占满 `126×36vp` 槽位，按钮内部文字居中；不放标题图标，不用大数字，不省略用户要求的主值。两个动作保持原候选绑定，不能为腾空间删除用户明确动作。
-
+**2x2 双动作前置约束**：单业务最终保留两个明确动作时使用 `S-content-dual-action`。结构固定为
+`content_area 38vp + 8vp + action_one 36vp + 8vp + action_two 36vp`，不使用 CardHeader。
 # 一、任务目标与优先级
 
 生成结果按以下优先级决策：
@@ -278,19 +279,16 @@ Few-shot 只是演示，不授权额外字段、组件、路径、事件、素�
 
 ## 3.1 一级高度算账硬门禁
 
-生成组件行之前，必须先在内部完成 root 一级高度算账；算不清或结果大于安全内容区时禁止开始输出 DSL：
+输出 DSL 前必须先计算 root 一级区域高度：
 
-1. `2x2` 和 `2x4` 的普通 root 使用 `padding:12`，可用高度固定为 `126vp`，即 `150 - 12 - 12`；只有 2x2 `S-dual-info` 使用 `padding:8`，可用高度为 `134vp`。2x4 的左右双区、非对称双槽和四槽宫格仍使用 `padding:12`，一级区域高 `126vp`。不得把 root 外部高度 `150vp` 当作内容高度。
-2. 对 root Column 的每个直接子节点确定最小占用高度 `H_i`。子节点显式写了 `height` 时使用该值；未写时，按其后代固定高度、上下 padding、上下 margin 和内部纵向间距求出最小高度。含 `36vp` 按钮的无高度 action 容器，其最小高度至少为 `36vp`，不能按 `0vp` 处理。
-3. `justifyContent` 为 `start|center|end` 时：`H_required = ΣH_i + Σ上下 margin + itemMargin × (子节点数 - 1)`。
-4. `justifyContent` 为 `spaceAround|spaceBetween|spaceEvenly` 时，`itemMargin` 表示必须保留的最小间距，仍然计入 `H_required`；只有扣除子节点、margin 和最小间距后剩余空间大于或等于 `0`，才能把剩余空间交给分布式对齐。不得仅因两者同时出现就判错，也不得假设分布式对齐会吞掉 `itemMargin`。
-5. `layoutWeight`、`flexShrink`、`clip` 和分布式对齐都不能抵消已经算出的固定高度。`H_required` 超过当前 root 的有效高度时，必须删除弱区域、合并标题、降低区域固定高度或改选更简单骨架；普通 2x2/2x4 为 `126vp`，仅 2x2 `S-dual-info` 为 `134vp`。
+1. 普通 `2x2`、`2x4` 的有效高度为 `126vp`；`S-dual-info` 为 `134vp`。
+2. `H_required = 子项高度之和 + 纵向 margin 之和 + itemMargin × 间隔数`。
+3. 无显式高度的容器按其后代固定高度、padding、margin 和间距计算；包含 `36vp` 按钮时不得按 `0vp` 处理。
+4. `layoutWeight`、`flexShrink`、`clip` 和分布式对齐不能抵消固定高度或最小间距。
+5. `H_required` 超出有效高度时，删除低优先级区域或改选更简单布局，不得依赖裁切。
 
-以下两种结构无论截图是否暂时可见都必须判定失败：
-
-- `20 + 63 + 63 + 8 × 2 = 162 > 134`：标题行与 `S-dual-info` 双 `63vp` 区域不可共存；删除总标题，保留 `63 + 8 + 63 = 134`。
-- `59 + 40 + 36 + 8 × 2 = 151 > 126`：使用 `spaceBetween` 时仍须计入两个 `8vp` 最小间距；固定区域已经放不下，必须先缩小或合并区域。
-
+例如：`63 + 8 + 63 = 134vp` 成立；再增加 `20vp` 标题即超高。`59 + 40 + 36 + 8 × 2 = 151vp`
+也不能通过 `spaceBetween` 修复。
 # 四、极简协议结构
 
 ## 4.1 组件行
@@ -648,7 +646,6 @@ ActionUnit——卡级 CTA：
 - 不把一个候选事件复制到多个无关组件，也不生成没有候选事件的可点击外观。
 
 # 八、画布、密度与布局预算
-
 **2x4 固定槽语义模块**：`InfoBlock` 与 `CardButton` 只表示布局选择阶段的语义角色，不是 Compact DSL 或最终 A2UI 的 `component_type`。
 
 - `InfoBlock` 必须直接占用一个 `132×57vp` 固定槽，并确定性展开为标准 Row/Column：最多两个单行 Text，可选一个右侧 `20×20vp` Image 或已满足比例约束的环形 Progress；没有合法 visual 时使用文字 Column 垂直居中。信息模块的外层与内部子组件均不得写 `onClick`，也不得显示动作提示文案。
@@ -657,282 +654,385 @@ ActionUnit——卡级 CTA：
 
 **2x4 白色内容背板颜色**：`2x4` 卡片中的白色内容背板、内容蒙版和可点击内容背板统一使用 `#99FFFFFF`（白色 60%），不得使用 `#CCFFFFFF`。`2x2` 白色内容背板使用 `#CCFFFFFF`（白色 80%）。本规则只约束背板的 `backgroundColor`，不改变白色文字、图标、按钮或融球的透明度。
 
-## 8.1 参考画布与设备自适应
+## 8.1 参考画布
 
-- 以下尺寸是生成阶段用于布局预算和压力检查的参考画布；端侧实际 surface 可随设备变化，不得假设参考画布就是所有设备的最终物理画布。
-- `2x2`：参考逻辑画布 `150vp × 150vp`。
-- `2x4`：参考逻辑画布 `300vp × 150vp`。
-- root 固定 `padding: 12`。
-- `2x2` 参考安全内容区 `126vp × 126vp`。
-- `2x4` 参考安全内容区 `276vp × 126vp`。
-- 固定参考宽度的一级内容组不得锚定在设备实际画布的左边或右边：root `Column` 必须使用 `alignItems:"center"`；root `Row` 若直接承载固定参考宽度内容组，必须使用 `justifyContent:"center"`。这样设备实际画布比参考画布更宽或更窄时，额外空间或不可避免的差值在两侧对称分配，不得只堆到一侧。居中不能替代容量检查：所有内容仍必须在参考安全区内预算成立，也不得依赖较小设备上的对称裁切掩盖溢出。
-- `2x2` 的带标题正式布局必须使用 5.15 的 CardHeader，不手写 Row + Text + Image 标题行；`S-center` 居中说明、`S-content-dual-action` 主内容名称、`S-dual-info` 分区内业务名称和无标题布局不套 CardHeader。`S-dual-info` 不增加总标题。`2x4` 只有单数据块骨架可以使用独立 CardHeader；2-4 个数据块不生成卡级标题、CardHeader、公共标题行或标题空槽。
-- root 固定 `borderRadius: 20`、`clip: true`。
-- root 背景统一按第十二节：蓝、紫、暖三套浅色微渐变写 `linearGradient`，融球写 `design`；只有用户明确要求时使用其他背景色、渐变或背景素材。不得透明或依赖宿主默认背景。
+| 尺寸 | 参考画布 | root padding | 安全内容区 |
+|---|---|---|---|
+| `2x2` | `150×150vp` | `12vp` | `126×126vp` |
+| `2x2 S-dual-info` | `150×150vp` | `8vp` | `134×134vp` |
+| `2x4` | `300×150vp` | `12vp` | `276×126vp` |
 
-## 8.2 数值布局
+- 参考尺寸用于生成预算；实际 surface 变化时，固定宽度内容组在 root 内居中，不把差值堆到单侧。
+- root 固定 `borderRadius:20`、`clip:true`；背景按第十二节的色板或 design 规则生成。
+- 2x2 带标题布局使用 `CardHeader 20vp`；`S-center`、`S-content-dual-action`、`S-dual-info` 和其它无标题布局不使用 CardHeader。
+- 2x4 只有 `W-top-bottom` 可使用卡级 CardHeader；其它布局的标题必须归属具体内容区。
 
-- 关键内部容器、图片、Progress、Button 使用数值宽高。
-- 对每个 Row/Column 分别计算两个轴的内部预算：`内部宽度 = 父宽度 - 左右 padding`，`内部高度 = 父高度 - 上下 padding`；子项的 width/height、四向 margin 和有效 `itemMargin` 都按所在轴计入。root 的直接内容预算必须固定按 `2x2: 126×126`、`2x4: 276×126` 检查，不能把 `150×150` 或 `300×150` 当成 padding 后仍可使用的空间。
-- Row/Column 使用 `start|center|end` 时，主轴占用量为 `所有子项主轴尺寸 + 所有子项主轴 margin + 有效 itemMargin × 间隔数`，该值不得超过父容器主轴内部预算；交叉轴上每个子项的尺寸与 margin 也不得超过交叉轴内部预算。
-- Row/Column 使用 `spaceAround|spaceBetween|spaceEvenly` 时，先计算 `剩余主轴空间 = 父容器主轴内部预算 - 所有子项主轴尺寸 - 所有子项主轴 margin - itemMargin × 间隔数`，剩余空间必须大于或等于 `0`，再在最小 `itemMargin` 之外按分布规则分配。`itemMargin` 缺失时按 `0` 计算；分布式对齐不能压缩子项，也不能修复负剩余空间。
-- `spaceAround|spaceBetween|spaceEvenly` 只在全部主轴子项都有稳定尺寸时使用，不依赖分布式对齐修复不确定宽高，也不假设它会保留额外固定间距。
-- 包含动态 Text、Button 或图文 CTA 的 Row 在完成各子项压力宽度分配后，主轴还应至少保留 `4vp` 非占用余量；若结果刚好为 `0` 或仅靠默认裁切才能成立，优先改为 Column、扩大主内容槽位或删除次要字段。
-- `clip: true` 只用于约束卡片外形，不是布局策略。任何文本、图标、Progress、状态区或 CTA 的理论边界超出父容器，都属于失败，即使截图中还能露出一部分也不得输出。
-- 删除无语义容器：只有在承担轴向布局、尺寸预算、背景/边框、叠放、对齐或点击边界时才允许新增 Row/Column/Stack。所有 Row、Column、List、Stack 的 children 都必须非空，绝不使用空容器充当固定间距或 `layoutWeight` 留白；固定间距使用父容器 `itemMargin` 或 `padding`，剩余空间使用具有真实子组件的父容器合法对齐方式。仅包含一个子节点且不承担上述职责的容器必须折叠；不要为命名分区、制造空隙或微调位置连续包裹多层容器。除受控 ring Stack 和必须的卡片 shell 外，从一个区域容器到可见叶子组件通常不超过三层布局容器。
-- 对 2x2 的 root Column，输出前必须在内部列出所有直接子项高度并求和；总和连同 margin/有效间距必须不超过 `126vp`。例如 `20 + 66 + 36 + 36 = 158 > 126` 明确不成立，必须删除/合并一个区域或同时缩小多个区域，不能仅改成 `spaceBetween`。
-- 窄于父容器内部宽度的主焦点组件或动作组件必须显式决定在父容器中的交叉轴位置。若 Progress 环、主插画、主数值、Button 或 clickable Row 的设计意图是水平居中，应由父 Column 使用 `alignItems:"center"`，或放进一个与父容器内部宽度一致且内容居中的 Row/Stack；组件自身的 `justifyContent/alignItems/textAlign` 只控制其内部内容，不能证明该组件自身相对父容器居中。`Stack.alignContent:"center"` 也只控制 Stack 内部子项叠放位置，不会让 Stack 自身在父 Column 中居中。
-- 间距只能使用：`2、4、6、8、10、12、14、16`。
-- 优先使用 `4、8、12、16`；紧密关联的数字与单位可用 `2-4vp`，图标与文字通常至少 `6vp`，独立信息组之间通常至少 `8vp`。`itemMargin:0` 只允许数字与单位、连续符号或其它必须视觉连写的内容；组间距必须大于或等于组内距。
-- 留白必须围绕主信息组分布，不能集中堆在单侧、单角或两个分区之间。除 `S-center` 单信息卡为突出唯一 hero 而保留的有意留白外，不得出现占安全内容区约三分之一以上、且不参与主焦点构图的连续空白；并列同级分区应保持相近高度和视觉重量，不能一侧拥挤、一侧空泛。
-- 内部信息背板圆角通常 `8-12vp`；主要支撑背板可用 `12-16vp`；胶囊圆角取高度一半。
-- 可点击视觉元素宽高不得小于 `24vp`；主胶囊按钮默认高 `36vp`。
-- `2x2` 中带文字的主动作优先使用底部全宽 Button 或全宽图文 Row；`S-dual-info` 不支持事件，root、两个背板分区和内部子组件均不得绑定 `onClick`。不得把 Image + Text 横向塞进窄于 `56vp` 的侧边动作栏；空间不足时改成全宽动作、纯文字 Button，或仅保留带 accessibility.label 的独立图标动作。
-- 底部动作区必须贴近安全区底部，外边距不超过 `16vp`。
-- Stack 不能制造遮挡。允许为主焦点保留较大留白，但留白必须形成明确的内容重心和平衡，不能像缺失组件、空槽位或未加载区域。
-- 同一信息组内优先共享左边界、中心线或基线；除真实对比外，不让相邻主信息出现近似但不相等的宽度、高度或边距。
-- 内边距、组内距和组间距形成可见节奏：组内距通常为 `2-6vp`，同级组间距通常为 `8-12vp`，主区域之间通常为 `12-16vp`；不要无理由交替使用多个相近间距。
+## 8.2 数值预算
+
+- 每个 Row/Column 都按父容器扣除 padding 后的宽高计算；子项尺寸、margin 和 `itemMargin` 全部计入。
+- `start|center|end` 和 `spaceAround|spaceBetween|spaceEvenly` 都必须先满足最小占用量不超界。
+- 动态 Text、Button 或图文动作完成压力预算后，主轴至少保留 `4vp` 余量。
+- 间距只使用 `2、4、6、8、10、12、14、16vp`；紧密内容用 `2-6vp`，独立信息组至少 `8vp`。
+- 数字与单位可以使用 `0-4vp`；其它独立信息不得使用 `itemMargin:0`。
+- 固定间距使用 padding 或 `itemMargin`，不得用空容器占位；无布局职责的单子节点容器应折叠。
+- 窄于父容器的主焦点或动作必须由父容器明确设置交叉轴位置。
+- `clip:true` 只约束外形，不能掩盖文本、图标、Progress 或动作越界。
+- 可点击元素宽高不得小于 `24vp`；主文字按钮高 `36vp`，底部动作贴近安全区底部。
+- 同一信息组共享左边界、中心线或基线；Stack 不得制造遮挡。
 
 ## 8.3 区域上限
 
-- `2x2` 最多 4 个主区域，默认最多 1 个显式动作；`S-content-dual-action` 固定为 1 个内容区加 2 个动作区，`S-dual-info` 固定为两个无动作背板分区。
-- `2x4` 最多 4 个主区域。一个动作优先放进所属内容父区的底部胶囊槽；两个同组动作使用非对称布局的两个固定 CardButton 槽，两个不同业务动作分别放入左右父区。四槽宫格允许 3 个动作加 1 个真实信息块或 4 个动作，不得以空槽凑数。
-- `2x2` 普通 root 直接内容组默认不超过 3 个；`S-content-dual-action` 固定为内容区、动作一、动作二三个区域，几何为 `38 + 8 + 36 + 8 + 36 = 126vp`。2x2 单对象布局优先采用“标题/上下文 + 主显示组 + 可选动作或支撑组”。`S-dual-info` 的 root 只能直接包含上下两个内容蒙版。四宫格是无标题、无动作的受控例外，固定为四个 `59×59vp` 内容格。
-- `2x2` 最多使用 1 个内部内容背板；仅 `S-dual-info` 允许两个等高、同构、同层级的弱背板，并且此时 root 只能直接包含这两个区域，不再增加总标题或第三个区域。`2x4` 左右双区固定使用两个 `132×126vp` 父背板；非对称布局固定使用一个 `132×126vp` 内容区和两个 `132×57vp` 固定槽；四槽宫格固定使用四个 `132×57vp` 槽。列表项优先用间距、排版或 Divider 分组，不默认每项都套圆角底板。
+| 布局 | 一级区域上限 |
+|---|---|
+| 2x2 普通布局 | 最多 3 个直接区域、默认最多 1 个动作 |
+| `S-content-dual-action` | 1 个内容区 + 2 个动作区 |
+| `S-dual-info` | 2 个等高背板 |
+| `S-quad-content` | 4 个固定内容格 |
+| `W-top-bottom` | title/primary/details |
+| `W-split-panels` | 2 个 `132×126vp` 父区 |
+| `W-content-side-slots` | 1 个 `132×126vp` 内容区 + 2 个 `132×57vp` 固定槽 |
+| `W-four-slots` | 4 个 `132×57vp` 固定槽 |
 - 小内容区域统一指 2x2 `S-dual-info` 的 `134×63vp` 分区和 2x4 `W-four-slots`/`W-content-side-slots` 的 `132×57vp` 固定槽，只允许两个单行 Text：第一行对象名与主数据使用 `14fp/700`，第二行辅助数据使用 `12fp/400`；两个 Text 都必须显式设置 `maxLines:1`。1-2 项数据可在存在准确素材时使用一个右侧图标；3 项时不使用 visual，并在容量不足时删除最低优先级项。固定槽不得嵌套胶囊按钮或第三行文字。
 - 小内容蒙版使用图标时固定为 `Row -> [text_column, visual]`，即使只有一行文字也必须用定宽 `text_column` 包装；父 Row 的 `itemMargin` 只能是 `8vp`，不得按通用组间距改成 10/12/16vp，也不得省略或写 0。visual 固定在右侧并垂直居中，右边缘距蒙版右边固定 12vp。独立 Image 固定 `20×20vp`：2x2 文字列宽 74vp，并满足 `12 + 74 + 8 + 20 + 12 = 126`；2x4 文字列宽 82vp，并满足 `12 + 82 + 8 + 20 + 12 = 134`。仅有 1-2 项信息，且目标字段通过 11.3 节 Progress 比例语义与可靠 `total` 检查时，visual 才可以是右侧环图；否则只能使用合法 Image 或删除 visual，严禁把任意数值包装成环。合法环按环外框右边缘距蒙版右边 12vp：2x2 `S-dual-info` 使用 `44×44vp` 环和 60vp 文字列，2x4 `W-four-slots` 使用 `40×40vp` 环和 72vp 文字列；中心图标保持 20×20vp。3 项时必须删除包括 Image、Progress 和环中心内容在内的整个 visual；无合法图标且无合法环图时同样删除 visual，文字列占满蒙版内部宽度。
-- 一个表面只选择一种主要层级信号：背景填充、边框或阴影三者至多强化一种；不得同时使用强填充、明显边框和阴影。
-- 不生成 dashboard 式密集仪表盘、营销海报、完整页面、完整月历、复杂表单、导航中心或按钮矩阵。
+- 一个表面只强化背景填充、边框或阴影中的一种，不生成密集仪表盘、海报、完整页面或按钮矩阵。
+- 2x2 单对象布局无法通过压力检查时，回退为“标题 20vp + 主显示组 46-54vp + 可选全宽动作 36vp
+  或支撑信息 16-28vp”；全部区域和间距仍须闭合在 `126vp` 内。
+- 回退时只保留 `mustKeep` 主信息和动作；不增加侧边文字动作、第二条长读数或独立弱 footer。
+# 九、固定布局路由
 
-当 `2x2` 单对象布局的任一候选无法通过文本或布局压力检查时，强制回退为以下最小骨架，不继续横向压缩；`S-dual-info` 不得使用此回退骨架：
+每张卡只选择一个正式布局。路由顺序：
 
-```text
-有显式动作：标题或上下文 20vp + 主显示组 46-54vp（内部最多含一条支撑信息）+ 全宽动作 36vp
-无显式动作：标题或上下文 20vp + 主显示组 46-54vp + 一条全宽支撑信息 16-28vp
-```
+1. 按业务对象实例和共同任务划分数据块。同一对象的字段保持在同一数据块；字段、组件和动作数量不增加对象数。
+2. 跨垂域内容只有存在明确共同任务时才能合并；不存在共同任务时保留主问题，其余内容按未满足或另行生成处理。
+3. 动作归入其直接服务的数据块；无法确定归属的动作不进入布局。
+4. 用户明确要求且已通过校验的动作标记为 `mustKeep`；容量不足时先删除 `shouldKeep`，再改选布局。
+5. 固定槽必须由真实内容或动作填满；可选槽不存在时同时删除槽和相邻间距，不生成空容器或占位。
+6. 根据尺寸和信息关系选择正式布局；S1-S4、W1-W10 只作为输入别名。
 
-三个直接内容组的高度与最终分布间距之和必须不超过 `126vp`。有显式动作时最多在主显示组内部保留一条支撑信息；无动作时最多保留一条独立支撑组。禁止在该骨架之外增加窄侧边文字动作、第二条长格式化值或独立弱 footer。
+2x2：单核心用 `S-center`；两个对象用 `S-dual-info`；四个同级短模块用 `S-quad-content`；其余按
+标题、主辅关系和动作数量选择对应布局。
 
-# 九、固定布局骨架路由
+2x4：单语义组连续阅读用 `W-top-bottom`；两个完整内容区用 `W-split-panels`；一个完整内容区加两个
+固定槽用 `W-content-side-slots`；四个同级模块用 `W-four-slots`。两个独立业务各有一个直属动作且均能
+使用 Sub-118-D 时，固定使用 `W-split-panels`。
 
-每张卡必须且只能选择一个固定骨架。骨架规定一级 region 的几何关系、角色容量和动作上限；允许在声明范围内微调子组件对齐、字号、颜色和局部高度，不得跨骨架拼接 region，也不得为了使用候选而新增一级区域。
+Few-shot 只能示范已登记布局。提示词末尾存在固定场景路由或本轮路由摘要时按其允许范围选择，不从案例
+或通用知识补回已被裁剪的布局。
+## 9.1 2x2 固定语义布局
 
-Few-shot 只示范本节及尺寸分册已经登记的骨架和内部变体，不具有新增布局的权限。案例出现的一级区域顺序、对齐方式、固定尺寸或动作位置，必须能映射到一个已登记变体；无法映射时不得仿照该案例生成。尺寸分册应登记案例使用的全部有效变体，案例名称和业务语义不构成新的布局类型。
+参考画布为 `150×150vp`。普通布局 root `padding:12`，安全内容区为 `126×126vp`；仅 `S-dual-info`
+使用 `padding:8`。带标题布局统一使用单行 `CardHeader 20vp`，标题至首个内容区间距固定 `6vp`。
+动作按钮固定高 `36vp`。布局只规定一级区域关系，内容组件按对应组件与组合规则展开。
 
-提示词末尾若存在“本轮路由摘要（高优先级）”，其中的骨架范围、视觉路由、动作处理和参考金标由微服务根据尺寸、数据块数量及候选能力生成。固定多业务骨架必须直接执行；单业务的具体骨架和第一焦点仍由模型按 userQuery 和字段关系选择，不得把示例中的业务值、标题、颜色或组件 id 当成当前请求事实。主提示词第九节可能已删除另一尺寸或对象数不匹配的骨架；缺失的骨架表示本轮禁止使用，不得凭通用知识补回。
-
-提示词末尾若存在“本次请求固定场景路由（最高优先级）”，必须先执行该路由锁并跳过本节通用对象计数与骨架选择；不得再根据字段数量、`/data` 一级节点或普通数字规则改选其它骨架。没有路由锁时才执行以下通用路由。
-
-选择骨架前必须完成信息分组与动作归属：
-
-1. 先按业务对象实例和共同任务划分数据块。同一对象的名称、数值、状态、属性和辅助信息保持在同一个数据块内；字段数、组件数和动作数都不得增加数据块数量。跨垂域内容只有存在明确共同任务时才能进入同一张卡片，并且各数据块仍须可独立识别；不存在共同任务时不得合并，保留用户主问题对应的数据块，其余内容按既有未满足或另行生成流程处理，不得仅因 2x4 空间充足而拼卡。
-2. 每个动作归入它直接服务的数据块。动作参数引用某个数据根时，动作只能放在该数据块所属区域；没有数据绑定时按 userQuery 的明确目标归属，无法确定归属的动作不进入布局。
-3. userQuery 明确要求、且已经通过能力、事件和参数校验的匹配动作必须标记为 `mustKeep`。选择布局时必须优先为这些动作分配所属业务槽位；容量不足时先删除 `shouldKeep` 信息，再改选同尺寸内能够合法承载的骨架。仍无法承载时执行既有的不支持或降级流程，不得静默删除明确动作，不得虚构动作，也不得把动作放入无关业务区域。未被用户明确要求、无法匹配用户目标或无法确定业务归属的候选动作可以不进入布局。
-4. 同一数据块的标题、主体、支撑信息和所属动作保持在一个连续父区域内。只有骨架明确提供独立动作槽时，动作才可进入相邻固定槽；这不会改变动作的业务归属。
-5. 固定双槽、三槽和四槽必须全部由真实数据块、支撑信息或动作填充。可选区域不存在时同时删除槽位及相邻间距；固定骨架要求的槽位不足时改选其它骨架，不生成空容器、隐藏占位或虚构内容。
-6. 子布局中的标题、文本、图标、Progress 和动作不重复计入整卡一级区域。组件只能在所属父区域内排列，不得跨区、覆盖间距或把多个业务对象合并进同一个辅助槽。
-
-路由顺序固定为：先按 TaskSpec.size 选择尺寸分册 → 按业务对象实例和共同任务划分数据块 → 按信息关系选择正式语义布局 ID → 检查 `mustKeep` 是否全部能映射到槽位 → 选择结构最简单的可用骨架。action 数量、字段数和组件数本身都不得增加数据块数量。同一对象的名称、数值、状态和辅助信息保持在同一数据块；同类业务中被用户分别要求且语义明确的不同对象实例分别计数。2x2 从 9.1 登记的十个布局中选择：两个独立对象使用 `S-dual-info`，四个同级短模块使用 `S-quad-content`，其余按标题、主辅关系和动作数量选择对应布局。2x4 只从 `W-top-bottom`、`W-split-panels`、`W-content-side-slots`、`W-four-slots` 中选择：一个语义组的上下连续阅读使用 `W-top-bottom`；两个完整内容区，或同一语义组的核心结论与属性详情左右拆分，使用 `W-split-panels`；一个完整内容区加两个真实固定信息或动作槽使用 `W-content-side-slots`；四个同级真实模块使用 `W-four-slots`。S1-S4、W1-W10 只作为输入别名，不得作为路由结果。超过布局容量时先删除 `shouldKeep`，不得自由发明复杂页面。
-
-## 9.1 2x2 固定语义骨架
-
-2x2 每张卡必须且只能选择一个正式语义布局 ID；布局规定一级 region 几何与槽位容量，允许在声明范围内微调，不得跨布局拼接。S1-S4 只作为输入别名，不得作为输出布局 ID。
-
-布局样式以 Compact 合同为最高约束。在组件名称、尺寸、圆角、标题高度、动作形态或容量与其它样式
-定义不一致时，必须使用本节及第五、八、十、十一、十二节的规则；同时保留目标样式的业务对象关系、
-视觉主次、上下或左右排列、内容对齐和动作相对位置。不得使用合同未登记的组件或属性、Grid、自然高度
-标题槽、不符合组件合同的按钮尺寸或超出安全区的几何。
-
-选择骨架前必须先按最终展示数据识别独立业务对象：同一语义实体下的名称、电量、状态等多个字段始终只算 1 个对象，`eventCandidates`、动作数量和组件数量均不得增加对象数；不同业务实体或同类业务中的不同对象实例（如两座城市）才分别计数。只有恰好 2 个独立对象时才允许 `S-dual-info`，且必须完整生成上下两个 `134×63vp` 分区；只有 1 个对象时必须选择非 `S-dual-info` 的正式布局，绝对禁止生成单个 `134×63vp` 内容背板或其它残缺双信息块。单对象加两个明确动作必须选择 `S-content-dual-action`，不得把该对象的字段拆成两个双信息分区。
+以下 DSL 只演示布局结构。静态文案、颜色、素材和事件用于标明槽位；实际生成必须替换为 TaskSpec 中的
+真实内容与候选，不得照抄示例业务值。
 
 ### `S-center`（核心居中）
 
-- 用于：无需标题即可理解的单一 Data Display 内容；信息极少场景。
-- region：唯一一个可独立理解的信息模块在 `126×126vp` 安全内容区内双轴居中；实现该模块所需的最小 Row/Column/Stack 包装不增加模块数量。不得把多个同级事实、支撑信息或多个业务组件拼成一个居中组。不使用 CardHeader，不额外生成右上角辅助图标。倒计时或纪念日只要需要显示目标名称，就改用 `S-title-content`；不得在 `S-center` 上方临时增加标题。
-- 槽位：唯一一个 Data Display 语义模块；可以是纯数字主值、状态文字、倒计时或其它已登记的数据展示形式，具体结构按对应信息组件展开；无 action。只有纯数字主值变体使用默认 30fp、最大 38fp，并可紧邻真实单位。
-- 禁止：第二数据域、按钮、多行正文。
+- 适用：一个无需标题即可理解的 Data Display，无动作。
+- 尺寸与闭合：唯一内容区 `126×126vp`。
+- 对齐：内容双轴居中。
+- 回退：内容需要对象名、标题或独立说明时改用带标题布局。
 
-### 带标题布局组
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"alignItems":"center","justifyContent":"center","backgroundColor":"#FFF1F6FE"},["value"]]
+["value","Text",{"content":"68%","width":126,"fontSize":30,"fontWeight":700,"fontColor":"#FF1F4799","textAlign":"center","maxLines":1}]
+```
 
-- 用于：状态卡、数值卡、日程提醒、省电、步数、睡眠等「两条信息 + 一个动作」。
-- region：按正式布局使用 `CardHeader 20vp`、内容区、可选支撑区和动作区。`S-title-content` 的主体左对齐并贴内容区底端；`S-title-dual-content` 的主信息左上、支撑信息左下；带动作布局的正文从内容区左上开始，36vp 动作固定沉底。会议时间线只能作为已登记内容组件进入相应槽位，不得改变顶层布局对齐。
-- 受控变体选择：先执行倒计时、会议时间线、单数值 Hero、成对状态等前置专用路由；未命中时，再按以下信息关系选择对应正式布局。所有变体共用一个业务对象、至多一个显式动作和 `126vp` 安全内容宽度，不得跨变体拼接一级区域。
-  - **`S-title-content`（标题单内容）**：稳定业务标题使用 `CardHeader 20vp`，其后只有一个 `content_area`。该布局不包含动作和独立支撑事实，主体内容组固定左对齐并贴 content_area 底端；不生成 `bottom_area`，不使用空 Column、空 Text 或固定空槽占位。存在动作时必须改用对应的带动作正式布局。
-  - **`S-title-dual-content`（标题双内容）**：同一业务对象的主信息与真正独立的支撑事实分别进入 `content_area` 和 `bottom_area`。扣除 `CardHeader 20vp`、标题后 6vp 间距和两个内容区之间 8vp 间距后，两个内容区固定等分剩余高度，均使用 `layoutWeight:1`；主信息固定左上对齐，支撑信息固定左下对齐。主辅紧密相关时保持在同一个连续内容组内，不拆成上下锚点。主辅区域不能引用不同一级业务根；出现两个独立对象时立即改走 `S-dual-info`。
-  - **稀疏内容处理**：对应 V04/V12，但仍必须落入 `S-title-dual-content`。结构固定为 `CardHeader + content_area + bottom_area`；主信息左上、独立元数据左下，不得创建“中部主信息”这一额外顶层对齐变体。
-  - **`S-title-content-action` / `S-title-primary-secondary-action`**：标题和必需内容完整保留后，能够闭合 `36vp` 动作与有效间距时，优先使用带完整短文案的 `capsule` ActionUnit。`S-title-content-action` 只有一个主体内容组；`S-title-primary-secondary-action` 的主信息与紧密关联辅助信息固定组成连续内容组，两者间距为 2vp。content_area 固定 `alignItems:"start"`、`justifyContent:"start"`，正文 Text 固定 `textAlign:"start"`；标题至内容组间距固定 6vp，内容组至 `action_area` 间距固定 8vp；`action_area` 固定为 root 最后一项，宽 `126vp`、高 `36vp`，动作内容在按钮内部居中。两个布局都必须存在一个合法动作；动作不存在时，只有单一主体内容改用 `S-title-content`，存在真正独立支撑事实时改用 `S-title-dual-content`，不得保留带 action 的布局 ID、动作区域或相邻间距。
-  - **单焦点动作内容**：对应 V09，正式布局仍为 `S-title-content-action`。一个完整测量主读数与至多一条直接状态作为连续组从内容区左上开始，动作固定沉底；不得垂直居中正文。
-  - **双指标纵列动作变体**：对应 V11。只用于标题已承载共同上下文、两个同级指标因值或单位较长而无法通过双列压力预算、且存在一个底部动作的单业务卡。两个指标使用相同字号和字重，在 content_area 内左对齐纵排并作为一个连续组垂直居中；action_area 固定沉底。两个指标都足够短且各自标签和值能通过独立列预算时改用并列指标变体，不得用 ` | ` 把两个长指标压成一行。
-  - **`S-title-dual-column-action`（标题双列内容可选按钮）**：只用于同一业务对象内两个同级占比指标，固定使用不可换行的单行 `CardHeader`。内容行固定为两个 `59vp` 列与 `8vp` 列间距，满足 `59 + 8 + 59 = 126`；每列必须且只能展开一个环形指标模块，由 `Progress type:"ring"` 与该指标自己的可见值、标签组成，模块在列内居中，不允许跨列，也不增加竖向 Divider。指标不具备可靠比例语义、值或标签不能完整显示时，改用纵向标签—值行及其它正式布局，不得把普通文字列放进本布局。底部胶囊动作可选；存在时与内容行间距 8vp，不存在时同时删除动作槽和该间距。
-  - **对齐标签值列表变体**：对应 V14。只用于同一对象内恰好三个没有明确主次的短状态、等级或分类指标。三行使用相同高度，标签共享左侧对齐线，值共享右侧对齐线和统一字号、字重，整个列表在 content_area 内垂直居中；一条独立上下文可以进入 bottom_area。存在真实整体结果或用户明确指定重点时改用单焦点变体，不得把其中一项任意放大。
-  - **`S-title-anchor`（标题锚点内容）**：只有完整胶囊动作无法与必需内容共同闭合、右下纯图标动作可以安全避让正文、且候选中存在不依赖文字也能准确表达目标的合法图标时，才使用 `icon-round` ActionUnit。主信息从 content_area 左上角开始；底部必须是一个 `126vp` 宽、固定贴底且 `alignItems:"end"` 的真实 `bottom_area Row`，左侧支撑信息左对齐并贴底，左侧支撑区固定宽 78vp，右侧操作槽固定为 `40×40vp`，两者间距 `8vp`，满足 `78 + 8 + 40 = 126vp`；操作槽内居中展开 `36×36vp` 图标动作，图标为 `20×20vp`。图标动作必须带合法事件，不显示动作文字。缺少精确图标、动作需要文字解释或支撑信息压力不成立时，删除 `shouldKeep` 为胶囊动作释放空间；动作本身不是 `mustKeep` 时也可删除，不得用普通 Image 冒充按钮。
-  - **专用视觉变体**：环形 Progress、TimelineUnit 和其它已有专用结构继续执行各自组件、组合和 Few-shot 约束；它们只能替换声明的内容槽，不能据此增加标题、动作或第四个一级区域。
-- 标题口径：带标题布局的独立稳定标题固定使用 `CardHeader 20vp`。日期、时间、倒计时上下文和会议日期按专用亚型放在正文区域；标题变长时先缩短非必要静态文案，不能压缩 CardHeader 高度或依赖裁切。
-- 变体回退顺序：先保留 `mustKeep` 主信息和明确动作，再删除装饰与 `shouldKeep`，随后将并列指标改为纵排；图标动作条件不成立时优先为胶囊动作释放空间。仍无法在 `126vp` 高度内闭合时使用 8.3 节最小骨架。不得转成四宫格、自由浮动、左右业务分栏或新增未登记骨架。
-- `150×150vp` 密度：不含 Progress 的普通数值亚型使用 `30fp/38fp` 大数字时最多为“大数字主值行 + 一条辅助行”；若两条辅助事实需要分别阅读，则把主值降为 `20fp/24fp` 格式化读数或 `16fp/18fp` 普通主值，再使用两条辅助行。普通纯文字亚型最多使用“一条突出信息 + 两条辅助信息”。同级并行指标最多三条完整信息；只有两个指标都具备可靠比例语义时，才能使用 `S-title-dual-column-action` 的两个 59vp 环形指标列，普通纯数字、文字、状态或无可靠 total 的指标必须使用纵向标签—值行；三个同级状态/等级/分类指标同样使用统一的标签—值行，不得选其中一项放大为无标签 hero。这些上限按标题与 action 之间的全部可见信息合计，不能通过拆成 `content_area`、`bottom_area` 等多个容器规避。
-- 亚型：数值亚型（`value_row` 数字+单位 + 进度条/辅助行）；状态亚型（状态文字列 + 辅助行）；视觉亚型（`root -> [title_area, content_area, bottom_area]`，`bottom_area Row -> [ring_icon_stack, action_area]`，其中 `ring_icon_stack` 与环形 Progress 均固定 `48×48vp`、`strokeWidth:6`，中心放图标或读数，左下展示状态视觉；使用环内图标时，右下动作预先采用纯文字入口并预算文字宽度，标题不配图标；icon-round 仅在满足 2.5 节区域互斥及用户指定例外时选用）。
-- 会议时间线亚型：先确认整卡只有 calendar 这 1 个业务且最终只展示一个 `calendar.events[0]`；在此前提下，只要 userQuery 明确包含会议、入会或下一场会语义，存在 `intentName:"EnterMeeting"` 候选，或 TaskSpec 的事件标题/描述/sampleValue 明确表示会议、例会、评审会等会议事项，就强制参考 FEWSHOT_2x2 V06。sampleValue 仅用于识别路由，最终标题优先动态绑定真实字段；无真实标题字段且用户未给出会议名称时固定使用“日程”，不得省略标题。`day_area` 优先展示会议日期或日期标签，并固定使用左对齐的 `126×16vp Row`；`meeting_texts` 固定为标题加最多两行辅助信息，标题为 `14fp/700`，辅助信息统一 `12fp/400`。V06 只锁定时间线结构，不锁定背景：单会议、最终独立语义信息不超过 3 项、只有一个内容组、显式动作不超过 1 个且运行时允许融球时，可以使用 `fusion-ball-schedule-cool`；任一条件不满足时使用黄色微渐变。两种背景都不得改选带标题信息布局；结构必须是一个 TimelineUnit 紧邻纯文字 `meeting_texts`，所有辅助文字前后禁止任何 Image；禁止使用 `eventCount` 作为标题。若还展示任一非 calendar 业务，即使存在 EnterMeeting，也必须改走 `S-dual-info`，禁止 V06、TimelineUnit 和独立 action_area。是否有入会/查看动作以及是否展示地点只替换对应槽位，不改变单业务路由。多条会议或日程列表不适用本亚型。
-- 倒计时亚型：`value_group` 最多两行视觉内容，第一行仅放纯数字；第二行无明确时间时只放“天”，有明确时间时使用同一个 `12fp/400` Text 或紧凑 Row 显示 `天 · HH:mm`。禁止再生成第三行时间、提示或重复单位。
-- 槽位：标题、两行信息、至多一个显式动作。
-- 禁止：两个按钮、三个数据域。允许 content_area 通过 `layoutWeight:1` 占用剩余高度，内容区只允许环中心图标，图标默认固定 `width:20、height:20、flexShrink:0`（按统一 20vp 图标规格），不得随容器拉伸；内部间距使用显式 `itemMargin`，不得扩大间距填满容器。
+### `S-title-content`（标题单内容）
 
-#### 带标题布局的阅读顺序与垂直锚点
+- 适用：标题 + 一个主体内容组，无动作、无独立支撑区。
+- 尺寸与闭合：`20 + 6 + 100 = 126vp`。
+- 对齐：主体左对齐并贴内容区底端。
+- 回退：存在独立支撑事实时改用 `S-title-dual-content`；存在动作时改用带动作布局。
 
-- 普通单业务：root padding 12，CardHeader 高 20，标题到第一个内容区固定间距 6vp；其余主要内容区按所属骨架使用 8vp。`S-title-primary-secondary-action` 的主信息与紧密关联辅助信息固定使用 2vp，其它主值与直接说明这类紧密连续信息使用 2–6vp。先区分“必要解释”和“独立支撑”：必要解释紧跟主读数形成连续内容组，真正的日期、更新时间、范围或来源等独立支撑才能进入底部区域。
-- 有底部胶囊按钮：action_area 为 root 最后一项，高 36，固定沉底；正文左对齐并从 content_area 顶端开始。不得垂直居中正文，也不得使用 `spaceBetween` 代替真实区域。
-- 无底部胶囊按钮：`S-title-content` 按左对齐、底端对齐；`S-title-dual-content` 按主信息左上、支撑信息左下；并列指标按等宽双列规则执行。没有真正独立的底部信息时不强建 footer，不通过空容器模拟位置。
-- 同一主信息组内，主值与直接说明保持 2–6vp 间距；分开的支撑事实保持 4–8vp。不要把直接说明推到底部，也不要把独立事实用 ` | ` 塞进主值行。
-- TimelineUnit、环图和其它高阶信息组件只能替换所属内容槽，不改变所选正式布局的顶层几何。标题右侧优先语义准确的面性或已登记彩色图标；只有线性图标时可省略，不能换成错误图标。
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":6,"backgroundColor":"#FFF1F6FE"},["header","content"]]
+["header","CardHeader",{"title":"今日状态","fontColor":"#FF1F4799"}]
+["content","Column",{"width":126,"height":100,"alignItems":"start","justifyContent":"end"},["main"]]
+["main","Text",{"content":"状态正常","fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+```
+
+### `S-title-dual-content`（标题双内容）
+
+- 适用：同一对象的主信息 + 独立支撑信息，无动作。
+- 尺寸与闭合：`20 + 6 + 46 + 8 + 46 = 126vp`；两个内容区等高，均使用 `layoutWeight:1`。
+- 对齐：主信息左上，支撑信息左下。
+- 回退：主辅必须连续阅读时合并为单内容；两个区域属于不同对象时改用 `S-dual-info`。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":6,"backgroundColor":"#FFF1F6FE"},["header","body"]]
+["header","CardHeader",{"title":"今日概览","fontColor":"#FF1F4799"}]
+["body","Column",{"width":126,"height":100,"itemMargin":8},["primary","details"]]
+["primary","Column",{"width":126,"height":46,"alignItems":"start","justifyContent":"start"},["primary_text"]]
+["primary_text","Text",{"content":"主要信息","fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["details","Column",{"width":126,"height":46,"alignItems":"start","justifyContent":"end"},["details_text"]]
+["details_text","Text",{"content":"辅助信息","fontSize":12,"fontWeight":400,"fontColor":"#B31F4799","maxLines":1}]
+```
 
 ### `S-quad-content`（内容四宫格）
 
-- 用于：四个同级、可独立识别且能在单格内完整表达的短内容，无标题、无动作。
-- region：root `padding:12`，安全内容区内使用两行两列固定结构；每格 `59×59vp`，横纵间距均为 `8vp`。只使用 Row/Column 展开，不使用协议未登记的 Grid。
-- 槽位：四格全部必选，每格只承载一个真实内容模块；不得留空、合并、跨格或把同一普通字段拆成多格。
-- 禁止：CardHeader、Button、ActionUnit、第五个数据块、动态格高以及依赖裁切的长文本。
+- 适用：四个同级、可独立识别且能在单格完整表达的短模块，无标题、无动作。
+- 尺寸与闭合：四格均为 `59×59vp`，横纵间距均为 `8vp`。
+- 实现：使用 Row/Column 展开固定 `2×2` 几何，不输出 Grid。
+- 回退：任一模块无法完整放入单格时改选其它布局，不留空格或拆分字段凑格。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":8,"backgroundColor":"#FFF1F6FE"},["row_one","row_two"]]
+["row_one","Row",{"width":126,"height":59,"itemMargin":8},["cell_a","cell_b"]]
+["row_two","Row",{"width":126,"height":59,"itemMargin":8},["cell_c","cell_d"]]
+["cell_a","Text",{"content":"A","width":59,"height":59,"textAlign":"center","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+["cell_b","Text",{"content":"B","width":59,"height":59,"textAlign":"center","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+["cell_c","Text",{"content":"C","width":59,"height":59,"textAlign":"center","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+["cell_d","Text",{"content":"D","width":59,"height":59,"textAlign":"center","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+```
+
+### `S-title-content-action`（标题内容单按钮）
+
+- 适用：标题 + 一个主体内容组 + 一个动作。
+- 尺寸与闭合：`20 + 6 + 56 + 8 + 36 = 126vp`。
+- 对齐：正文左上，`126×36vp` 动作沉底。
+- 回退：没有动作时改用 `S-title-content`，不保留动作槽及其间距。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":6,"backgroundColor":"#FFF1F6FE"},["header","body"]]
+["header","CardHeader",{"title":"设备状态","fontColor":"#FF1F4799"}]
+["body","Column",{"width":126,"height":100,"itemMargin":8},["content","action_area"]]
+["content","Column",{"width":126,"height":56,"alignItems":"start","justifyContent":"start"},["status"]]
+["status","Text",{"content":"已连接","fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["action_area","Column",{"width":126,"height":36},["action"]]
+["action","ActionUnit",{"state":"capsule","label":"设备设置","actionSurface":"#331F4799","actionInk":"#FF1F4799","fontSize":14,"fontWeight":400,"onClick":[{"call":"clickToDeeplink","args":{"intentName":"Settings","bundleName":"com.huawei.hmos.settings","abilityName":"com.huawei.hmos.settings.MainAbility","uri":"bluetooth_entry"}}]}]
+```
+
+### `S-title-primary-secondary-action`（标题主次内容单按钮）
+
+- 适用：标题 + 紧密关联的主、次内容 + 一个动作。
+- 尺寸与闭合：标题至内容组 `6vp`，主次间距 `2vp`，内容组至 `126×36vp` 动作 `8vp`。
+- 对齐：主次内容从左上连续排列，动作沉底。
+- 回退：没有动作时按内容关系改用 `S-title-content` 或 `S-title-dual-content`。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":6,"backgroundColor":"#FFF1F6FE"},["header","body"]]
+["header","CardHeader",{"title":"今日进度","fontColor":"#FF1F4799"}]
+["body","Column",{"width":126,"height":100,"itemMargin":8},["content","action_area"]]
+["content","Column",{"width":126,"height":56,"itemMargin":2,"alignItems":"start","justifyContent":"start"},["primary","secondary"]]
+["primary","Text",{"content":"已完成 6 项","fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["secondary","Text",{"content":"目标 10 项","fontSize":12,"fontWeight":400,"fontColor":"#B31F4799","maxLines":1}]
+["action_area","Column",{"width":126,"height":36},["action"]]
+["action","ActionUnit",{"state":"capsule","label":"查看详情","actionSurface":"#331F4799","actionInk":"#FF1F4799","fontSize":14,"fontWeight":400,"onClick":[{"call":"clickToDeeplink","args":{"intentName":"Settings","bundleName":"com.huawei.hmos.settings","abilityName":"com.huawei.hmos.settings.MainAbility","uri":"battery"}}]}]
+```
+
+### `S-title-dual-column-action`（标题双列内容可选按钮）
+
+- 适用：同一对象内两个具备可靠比例语义的同级指标。
+- 内容区：单行 CardHeader 下放两个 `59vp` 环形指标列，列间距 `8vp`；每列一个环和自己的值、标签。
+- 动作区：可选 `126×36vp` 底部动作；存在时内容至动作间距 `8vp`，不存在时同时删除动作槽和间距。
+- 回退：普通数值、文字、状态、无可靠 total 或压力预算失败时改用纵向标签—值结构。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":6,"backgroundColor":"#FFF1F6FE"},["header","metrics"]]
+["header","CardHeader",{"title":"完成情况","fontColor":"#FF1F4799"}]
+["metrics","Row",{"width":126,"height":100,"itemMargin":8},["metric_a","metric_b"]]
+["metric_a","Stack",{"width":59,"height":59,"alignContent":"center"},["ring_a","value_a"]]
+["ring_a","Progress",{"value":68,"total":100,"type":"ring","width":52,"height":52,"strokeWidth":6,"trackColor":"#331F4799","color":"#FF1F4799"}]
+["value_a","Text",{"content":"68%","fontSize":12,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["metric_b","Stack",{"width":59,"height":59,"alignContent":"center"},["ring_b","value_b"]]
+["ring_b","Progress",{"value":82,"total":100,"type":"ring","width":52,"height":52,"strokeWidth":6,"trackColor":"#331F4799","color":"#FF1F4799"}]
+["value_b","Text",{"content":"82%","fontSize":12,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+```
+
+### `S-title-anchor`（标题锚点内容）
+
+- 适用：完整文字动作无法闭合，但存在语义明确的纯图标动作。
+- 尺寸与闭合：标题后为主内容区和底部锚点行；锚点行固定 `78 + 8 + 40 = 126vp`。
+- 对齐：主内容左上；支撑信息位于左下；右下 `40×40vp` 槽内居中放置 `36×36vp` 图标动作。
+- 回退：缺少准确图标或动作需要文字解释时改用底部文字动作布局。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":6,"backgroundColor":"#FFF1F6FE"},["header","body"]]
+["header","CardHeader",{"title":"音乐状态","fontColor":"#FF1F4799"}]
+["body","Column",{"width":126,"height":100,"itemMargin":8},["content","bottom"]]
+["content","Column",{"width":126,"height":52,"alignItems":"start","justifyContent":"start"},["main"]]
+["main","Text",{"content":"播放已暂停","fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["bottom","Row",{"width":126,"height":40,"itemMargin":8,"alignItems":"end"},["support","action"]]
+["support","Text",{"content":"每日歌单","width":78,"fontSize":12,"fontColor":"#B31F4799","maxLines":1}]
+["action","ActionUnit",{"state":"icon-round","icon":"resources/base/media/music_fill.svg","actionSurface":"#331F4799","actionInk":"#FF1F4799","onClick":[{"call":"clickToDeeplink","args":{"intentName":"Music","bundleName":"","abilityName":"","uri":"hwmusic://com.huawei.hmsapp.music/showMusicList?code=a001&type=4"}}]}]
+```
 
 ### `S-content-dual-action`（紧凑内容双按钮）
 
-- 用于：明确的双入口（歌单/收藏、开关对、导航对）。
-- region：root 直接包含 `content_area 126×38vp`、`cta_1 126×36vp`、`cta_2 126×36vp`，三个区域之间均为 `8vp`，满足 `38 + 8 + 36 + 8 + 36 = 126vp`；无独立标题区和动作组包裹层。
-- 槽位：主信息最多两行（名称/状态或主值/辅助文字）+ 两个显式动作；两个动作必须都有精确候选且由用户明确要求。第一行将对象名与主值合并为 `14fp/700` 完整文本，第二行辅助文字固定 `12fp/400`；不得套用其它骨架的 `30fp/38fp` 大数字。`S-content-dual-action` 的设备名属于主内容，不使用 CardHeader，也不放名称旁的右上角辅助图标。
-- 禁止：三按钮、双信息域、第三行信息、独立 CardHeader/content_area、标题图标和大于 14fp 的主信息。header_area 显式 height:40、flexShrink:0，action_area 显式 height:78、flexShrink:0；root itemMargin:8。第一行 height:20，第二行 height:17，组内 itemMargin:3，恰好占满 40vp。
+- 适用：单业务紧凑信息 + 两个明确动作。
+- 尺寸与闭合：`38 + 8 + 36 + 8 + 36 = 126vp`。
+- 对齐：内容左上；两个 `126×36vp` 动作依次沉底。
+- 限制：无 CardHeader；动作缺少时改选单动作或无动作布局。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":8,"backgroundColor":"#FFF6F2FF"},["content","action_one","action_two"]]
+["content","Column",{"width":126,"height":38,"itemMargin":2,"alignItems":"start","justifyContent":"start"},["main","status"]]
+["main","Text",{"content":"耳机盒 80%","height":20,"fontSize":14,"fontWeight":700,"fontColor":"#FF563D99","maxLines":1}]
+["status","Text",{"content":"未充电","height":18,"fontSize":12,"fontWeight":400,"fontColor":"#FF563D99","maxLines":1}]
+["action_one","ActionUnit",{"state":"capsule","label":"每日歌单","actionSurface":"#33563D99","actionInk":"#FF563D99","fontSize":14,"fontWeight":500,"onClick":[{"call":"clickToDeeplink","args":{"intentName":"Music","bundleName":"","abilityName":"","uri":"hwmusic://com.huawei.hmsapp.music/showMusicList?code=a001&type=4"}}]}]
+["action_two","ActionUnit",{"state":"capsule","label":"收藏歌单","actionSurface":"#33563D99","actionInk":"#FF563D99","fontSize":14,"fontWeight":500,"onClick":[{"call":"clickToDeeplink","args":{"intentName":"Music","bundleName":"","abilityName":"","uri":"hwmusic://com.huawei.hmsapp.music/showMusicList?code=favoriteSong&type=412"}}]}]
+```
 
 ### `S-dual-info`（双信息块）
 
-- 用于：两个独立展示对象的并列分区，可为不同业务（天气+打车、内存+耳机），也可为同类业务（两座城市的天气）；不能将同一对象的多个字段当成双业务。
-- calendar 会议与任一其他业务共同展示时也属于 `S-dual-info`；即使存在 EnterMeeting 候选，也禁止套用 V06 或 TimelineUnit，会议内容只放在所属 zone 内。
-- region：只允许上下纵堆，固定为 `root -> [zone_top, zone_bottom]`，root `padding:8`、`itemMargin:8`；两 zone 必须同时存在且均为 `134×63vp`、borderRadius 16、白色 80% 背板，且 `63 + 8 + 63 = 134`，禁止只生成其中一个 zone。不得增加 title/header/footer/action_area，也禁止左右双业务布局。每个 zone 必须完整遵守 8.3 节小内容蒙版规则，文字在左、图标或环图在右。
-- 两块背板 Row/Column 必须显式写 `padding:{left:12,right:12,top:0,bottom:0}`。内部可用宽度为 `126 - 12 - 12 = 102vp`，visual 的右边缘固定距蒙版右边 12vp；使用环图时，其 Stack 与环形 Progress 均固定 `44×44vp`、`strokeWidth:6`，按环外框定位，图标保持在环中心。不能漏掉背板、内边距或用 root 的 padding 代替。
-- action：不支持动作。root、两个 zone 和内部子组件均严禁 `onClick`，也不生成 Button、ActionUnit、action_area 或动作文案。事件候选不得改变双信息块结构；用户明确要求且必须保留的动作不能静默删除。
-- color：整卡先按主业务选择一套背景和主内容色，无明确主次时使用蓝色。两个 zone 内所有 Text、可染色 Image、Progress 与 Divider 复用同一主内容色 RGB；主次层级只能调整 alpha，禁止给两个业务分别套各自主题色。白色 80% 内容背板保持统一，不参与主内容色比较。
-- 槽位：每方最多 3 项数据并压成固定两行；1-2 项有语义准确且状态安全的候选素材时每区可使用 1 个右侧图标，3 项时不使用图标。独立图标与环中心图标二选一，日期、地点、状态等辅助文字前后仍禁止单独配图标；两个分区使用图标后，按钮和标题不再配图标。
-- 1-2 项数据时，文字长度、是否超过 6 个字以及实际占一行或两行都不能作为移除右侧图标的条件；右侧视觉固定 `20×20vp`、距背板右边 `12vp`，空间不足时只缩短低优先级文字，不改变视觉位置。
-- 禁止：总标题、左右双业务、三方分区、两方结构不同构和独立动作区。
+- 适用：恰好两个独立对象，无独立动作槽。
+- 尺寸与闭合：root `padding:8`；上下两个 `134×63vp` 背板，间距 `8vp`。
+- 槽位：每个背板最多两行单行 Text，可选一个右侧 `20×20vp` visual；无 visual 时文字组在背板内垂直居中。
+- 对齐：有 visual 时使用 `82vp` 文字组 + `8vp` 间距 + `20vp` visual；两个背板使用同一卡片色板。
+- 限制：不增加总标题、第三个区域、Button、ActionUnit、TimelineUnit 或 `onClick`。
 
-## 9.2 2x4 固定语义骨架
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":8,"borderRadius":20,"clip":true,"itemMargin":8,"backgroundColor":"#FFF1F6FE"},["zone_a","zone_b"]]
+["zone_a","Column",{"width":134,"height":63,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["text_a"]]
+["text_a","Text",{"content":"手机电量 68%","fontSize":14,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["zone_b","Column",{"width":134,"height":63,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["text_b"]]
+["text_b","Text",{"content":"耳机电量 82%","fontSize":14,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+```
 
-2x4 每张卡必须且只能选择 `W-top-bottom`、`W-split-panels`、`W-content-side-slots` 或 `W-four-slots` 之一，允许在声明范围内微调，不得跨骨架拼接 region。先按顶层区域关系选择骨架，再在父区域内部选择 Sub-118、Sub-140 或受控内容预设。独立卡级标题只允许用于 `W-top-bottom`；其余三个顶层骨架严禁卡级 title、CardHeader、公共标题行及标题空槽。所有 2x4 顶层家族统一使用 root `padding:12`：左右父区宽 132vp、间距 12vp，固定槽高 57vp、纵向间距 12vp。线性进度条一律 `strokeWidth:8`；弹性沉底用包含真实内容的 `layoutWeight:1` 容器占据剩余空间（`flexShrink` 只收缩不拉伸，禁止用于沉底）。
+专用 Progress、TimelineUnit、倒计时和其它内容预设只能替换所属内容槽，不改变以上一级几何。容量不足时先删除
+`shouldKeep`，再改选能承载全部 `mustKeep` 的正式布局；不得跨布局拼接区域。
+## 9.2 2x4 固定语义布局
 
-单个语义组的标题、主体与明细选择 `W-top-bottom`，再选择普通文本、metric-triple、progress-detail 或 list-rows 内容预设；一个完整内容区加两个固定信息或动作槽选择 `W-content-side-slots`；两个完整父区选择 `W-split-panels`；四个同级固定模块选择 `W-four-slots`。三个对象只有在一个对象适合完整内容区、另外两个能压缩进固定槽时才选择 `W-content-side-slots`。固定槽数量与真实内容数量不一致时改选其它骨架，不留空槽，也不把一个对象的字段拆成多个数据块填槽。
+参考画布为 `300×150vp`。内容前景层 `padding:12`，安全内容区为 `276×126vp`。一级横向分区固定为
+`132 + 12 + 132 = 276vp`；固定槽列为 `57 + 12 + 57 = 126vp`。只有 `W-top-bottom` 可以使用卡级
+CardHeader；其它布局的标题必须属于具体内容区。
 
-局部内容只允许在所属父区域内形成以下关系：单主体、主信息加支撑信息、两个同级短指标、主内容加一个所属动作，或骨架明确声明的两个动作。标题在主体之前，支撑信息在主信息之后；动作固定在所属区域声明的位置。不同业务对象不得共用局部标题、支撑信息或按钮。
-
-### `W-content-side-slots`（内容区 + 固定双槽）
-
-- 语义参数：`orientation:"content-start"` 表示内容区在阅读起始侧，`orientation:"content-end"` 表示内容区在阅读结束侧；两者只是同一骨架的镜像方向。内容区必须选择一个 Sub-140 子布局，固定槽列的两个槽必须各自承载一个真实 `InfoBlock` 或 `CardButton` 语义模块。这两个名称只用于选择模块角色，最终必须按第五节展开为标准 Row/Column/Image/Text/Progress，不得写成 `component_type`。
-- Sub-140：允许 `core-center`、`title-content`、`title-content-action`、`title-dual-column-action`、`title-primary-secondary-action`、`title-dual-content`、`quad-content` 或 `content-dual-action`。各变体分别使用 Sub-140-A/B/C/D/F/G/H/J 的几何；Sub-140-I 与 D 语义重复，统一解析为 `title-dual-column-action`。
-- 用于：存在一个明确主焦点，且其余必要字段、状态或动作可以压入右侧两个辅助槽。可承载单业务，也可承载“主业务 + 一个弱辅助业务”；Progress 不是选择条件。
-- region：root Row 使用 `padding:12`、`itemMargin:12`，直接包含一个 `132×126vp` 内容区与一个 `132×126vp` 固定槽列。槽列固定上下两个 `132×57vp` 槽、gap 12。内容区可在左侧，也可整体镜像到右侧；不得把镜像误判为新骨架。
-- 区域完整性：左右区域均必选，右侧两个辅助背板也必须同时存在。两个辅助槽分别承载真实支撑信息、紧密状态摘要或动作；只有一个辅助项时改选能完整承载内容的单数据块骨架，不复制信息、不生成空背板。主焦点及其直接说明全部留在左侧，不能为了填满右侧把同一主信息拆成两个辅助槽。
-- 内容区先按信息关系选择一个 Sub-140 子布局，再在其内容槽内选择 value-led、ring-led、event-led、status-led 或 dense-summary 等信息级预设；信息级预设不得改变 Sub-140 的标题、内容和动作位置。
-- 内容区对齐由 Sub-140 决定：`core-center` 双轴居中；`title-content` 主体贴底；`title-dual-content` 主信息左上、明细左下；带动作正文左上且按钮沉底；双列、四宫格和双动作执行各自固定几何。不得用业务预设新增三层锚点或居中正文。
-- 左侧 Progress 不能替代主读数。生成线性或环形 Progress 时，必须在同一主焦点组中同时显示对应的可见数值 Text；线性 Progress 与读数上下相邻并整体居中，环形 Progress 将短百分比读数放在环心。若候选只提供含单位的 string 字段、无法可靠得到运行时 number/integer 与 `total`，不生成 Progress，直接把原始格式化值作为主读数显示；禁止只留下标题和一条无读数进度线。
-- 事项容量：event-focus 展示三项时，每项只能压成一行短文本（如“09:00 · 需求评审会”）；需要标题加时间/地点两行时最多展示两项。必须展示三项时删除地点等低优先级字段，不得让第三项被画布裁切。
-- 固定槽只承载一项紧凑信息或一个动作模块，尺寸为 `132×57vp`。信息槽最多两行文字和一个可选 `20×20vp` visual；动作槽使用整个槽作为 `CardButton` 语义点击边界。上下组合只能是 `CardButton + CardButton`、`InfoBlock + InfoBlock` 或 `InfoBlock + CardButton`；禁止上方 `CardButton`、下方 `InfoBlock`。固定槽不得嵌套胶囊按钮；内容区只有在所选 Sub-140 明确支持时才允许内部 132×36vp 动作。`InfoBlock` 与 `CardButton` 禁止进入 Sub-140 内容区。
-- 槽位优先级：userQuery 明确要求的动作先占右侧槽，再放 `mustKeep` 辅助事实，最后才考虑 `shouldKeep`。明确要求两个动作时两个槽都作为动作入口；只有一个动作时，另一槽放最相关的一项辅助事实或两行紧密摘要。字段过多时合并或删除低优先级字段，严禁为了多放一项数据增加第三个背板。
-- 动作文案：一个动作槽只保留一个简短、完整的命令主标签，例如“查看日程”“蓝牙设置”“打开歌单”。第二行只允许补充真实目标或状态；禁止“蓝牙设置 / 打开设置”“收藏歌单 / 进入歌单”这类同义重复。单行足以说明动作时只保留一行并垂直居中。
-- 单业务选择：一个主状态或主读数已经能回答核心问题，并且还有 2 个可归并的辅助组时，优先使用 `W-content-side-slots`。尤其是“4 项以上事实 + 显式动作”、成对设备状态、天气预警与生活指数、单日程加提醒/导航等场景，不再使用通栏文字流和满宽底部按钮。
-- 数据归属：左侧可显示主业务根；右侧每个槽分别引用一个所属对象的数据或事件。不同根不能混进同一槽，动作参数与槽内数据必须同属一个对象。动作占辅助槽但不增加数据块。
-- 双业务主次：两个业务的有效字段量相差至少两项、且弱业务只有 1-2 项时，通常按一个主焦点加弱辅助业务处理，使用 `W-content-side-slots`，而不是给弱业务分配空旷的 `W-split-panels` 大背板。唯一的动作归属例外是两个独立业务各有一个直属动作、且两组都能压缩为合法 Sub-118-D：此时无论弱业务有一项还是两项内容，都必须使用 `W-split-panels`，让每侧分别完整承载本组数据和动作；不得把两个动作集中到固定槽列。若两个固定槽动作服务同一个内容组或整卡共同任务，可在内容区用最多三行普通字号摘要回答同一个用户目标，但不得制造第二个 hero。
-- 禁止：左侧白色蒙版、三列并列指标、全宽底部按钮、右侧超过两个背板、因存在多个 `/data` 根自动改成 `W-split-panels`。除“两个独立业务各有一个直属动作且均能使用 Sub-118-D”的固定例外外，只有两个业务都需要完整内容区时才使用 `W-split-panels`。
+以下 DSL 只演示一级几何。静态文案、颜色和事件用于标明槽位；实际生成必须替换为 TaskSpec 中的真实
+内容与候选，不得照抄示例业务值。
 
 ### `W-top-bottom`（上下双区）
 
-- 这是一个顶层几何骨架；`neutral-footer`、`text-footer`、`value-led`、`metric-triple`、`progress-detail` 和 `list-rows` 都只是其内容预设，不得作为顶层布局 ID。
-- 用于：没有右侧辅助槽需求、没有 Action 的单业务通栏内容。语义区域为可选 title、可选 primary 和必选 details；details 放一组连续明细，不能省略、留空或由动作替代。
-- 流式参数：只允许 `flow:"continuous"`、`flow:"footer"` 或 `flow:"equal"`，默认 `footer`。`continuous` 让 primary 使用自然高度，details 承接剩余高度并连续阅读；`footer` 让 primary 承接剩余高度、details 按自身最小高度固定沉底；`equal` 将扣除标题和间距后的高度等分给 primary 与 details，仅当两者都能在所得高度内完整显示时使用。该参数只指导标准 Row/Column 的确定性展开，不输出为组件属性。
-- 间距：title 与其后的第一个内容区固定 6vp；primary 与 details 同时存在时固定 8vp；title 存在而 primary 缺省时，title 与 details 固定 8vp。所有内容左对齐并从各自区域顶部开始，不把核心数值改为居中。
-- `neutral-footer`：对应 V00。用于未知业务或字段语义不足的中性回退；无 CardHeader，主信息进入上内容区左上，一条直接辅助信息进入下明细区左上，不生成动作、背板、图形或弱字段。
-- `text-footer`：对应 V07。`kicker 12fp/400` 顶部左对齐 + `body Column 103`；`event` 使用 `layoutWeight:1` 并从区域左上角开始，包含最大 18fp/500 的主内容标题和最多两行 12fp/400 正文；`date 12fp/400` 左对齐并固定沉底。所有正文共享左边界。
-- `value-led`：对应 V11。使用可选 `CardHeader 20vp` + `hero 60vp` + `support 34vp`；hero 从左侧开始，包含一个完整测量主读数和一条直接说明，support 只放一条独立辅助信息。不得增加第二个 hero、右侧背板或第三条支撑信息。
-- 槽位：必选 details，可选 title 与 primary；一个单业务主内容组，至多两条必要支撑信息；不支持 Action。`InfoBlock`、`CardButton` 语义模块禁止进入任一区域。
-- 禁止：跨变体拼接、三行以上正文、多个主焦点、辅助背板、按钮，以及 root 或任一子组件上的 `onClick`。
+- 适用：单个语义组连续展示标题、主体和明细，无动作。
+- 区域：可选 title、可选 primary、必选 details；全部左对齐。
+- 间距：title 至首个内容区 `6vp`；primary 至 details `8vp`。
+- 流式关系：`continuous` 为连续自然高度；`footer` 为 details 沉底；`equal` 为 primary/details 等分。
+- 限制：不使用 `InfoBlock`、`CardButton`、Button 或 `onClick`。
 
-### `ring-detail` 内容预设（属于 `W-split-panels`）
+受控内容预设：
 
-- 用于：同一语义组的比例主指标与属性详情需要左右拆分；左侧为环形核心结论，右侧为标题与说明。
-- region：使用 `W-split-panels`。左侧 132×126vp 父区选择 Sub-118 `core-center`，在 116×110vp 内居中放置不超过 92×92vp 的环；右侧父区选择 Sub-118 `title-content`，局部标题在上，说明组左对齐并贴内容区底端。不得生成卡级 CardHeader。
-- 槽位：一个环主指标；右侧至多三行说明。
-- 禁止：环径 <80、右侧第二数据域、环心空置。
+| 预设 | 固定结构 |
+|---|---|
+| `neutral-footer` | 无 CardHeader；主信息左上，单条辅助信息位于下方 |
+| `text-footer` | 顶部 kicker；事项内容左上；日期沉底 |
+| `value-led` | 可选 CardHeader 20vp + hero 60vp + support 34vp |
+| `metric-triple` | 可选 CardHeader 20vp + 三个同构指标列；列宽 88/96/88vp，Divider `1×64vp` |
+| `progress-detail` | 可选 CardHeader 20vp + progressSlot 45vp + details 45vp；详情背板 `134×45vp` × 2，间距 8vp；线性 Progress `276×8vp` |
+| `list-rows` | 可选 CardHeader 20vp + 三行 `276×28vp` 背板，行间距 8vp |
 
-#### `metric-triple` 内容预设
-
-- 用于：三并列同构指标（健康概览等）。
-- region：可选 `CardHeader 20vp` + `metrics Row 84`：三列（88/96/88）+ 两条竖 `Divider 1×64` 居中；每列固定为第一行 `value_row`（纯数字 24fp/700 + 同行单位 12fp/400）和下方 `label 12fp/400`，三列对应行严格水平对齐，列内 justifyContent center；字段无法拆分数值与单位时，第一行使用最大 18fp 的完整数值字符串，不生成空单位占位。
-- 槽位：恰好三个指标；每列一个数值。
-- 禁止：列内行错位（三列 value_row/label 各自同水平线）、第四列、单位换行或放到数字下方。
-
-#### `progress-detail` 内容预设
-
-- 用于：线性进度语义（恢复度、目标完成）+ 双详情背板。
-- region：可选 `CardHeader 20vp` + `body 98`：`progressSlot 45` 从左上角开始并保持左对齐（主数值行 20fp/700 + label 12fp/400 + `Progress linear 276×8 strokeWidth 8`）+ `details Row 45`（两背板 134×2 gap 8、圆角 10、白色 60% 底，各「标题 12fp/400 + 值 12fp/400」，文字左对齐并从背板顶部开始）。
-- 槽位：一个进度主指标 + 两个详情项。
-- 禁止：进度条细于 8vp、三背板、详情行高 >50。
-
-### `agenda-cta` 内容预设（属于 `W-content-side-slots`）
-
-- 用于：下一日程/单事件 + 两个真实入口。
-- region：复用 `W-content-side-slots` 的横向几何，root Row `padding:12`、`itemMargin:12`；一侧 `132×126vp` 内容区承载日程标题、时间和一条必要上下文，另一侧上下两个 `132×57vp` 固定槽分别承载一个动作。允许整体镜像，动作内容在槽内垂直居中、文字保持左对齐。
-- 槽位：左侧一个日程对象；右侧恰好两个动作。动作背板使用一个简短的 14fp/500 单行标签；可选语义准确的 20×20vp 图标时，必须使用 `Row -> [78vp 文字 Column, 20×20vp Image]`，图标固定为最后一个直接子节点并位于右侧。动作必须有注册事件。
-- 禁止：满宽底部双按钮、单按钮冒充本骨架、三按钮、把事件字段挤进动作背板、标题换行。
-
-#### `list-rows` 内容预设
-
-- 用于：近期日程/待办 3 行清单。
-- region：可选 `CardHeader 20vp` + `list 102`：三行背板 276×28（gap 8）、圆角 8、白色 60% 底；列表从区域顶部开始，每行文本 12fp/400、左对齐并在行内垂直居中，不附加装饰图标。
-- 槽位：恰好三行；每行一条文本。
-- 禁止：两行或四行、行内按钮、行高不一。
-
-### `W-four-slots`（四槽宫格）
-
-- 用于：恰好 4 个同级真实信息或动作模块。允许四个信息模块、信息与动作混合、三个动作加一个真实信息模块，或四个共同任务动作；同一对象的多个字段只有在语义上本来就是四个独立模块时才可分格。
-- region：无卡级标题；root `padding:12`，使用 `276×126vp` 的固定 `2×2` 槽位，两行两列的横纵 itemMargin 均为 12，每个槽固定 `132×57vp`。每槽放一个真实的信息模块或动作模块，不得嵌套第二层背板、合并、缺省或用空容器占位。
-- action：动作槽使用整个 `132×57vp` 槽作为 `CardButton` 语义点击边界，并显示一个完整短命令；`InfoBlock` 信息槽不支持事件。root、grid、行容器及槽内子组件不重复绑定动作，同一事件不得重复绑定。四个槽可按业务关系自由混排 `InfoBlock` 与 `CardButton` 语义模块，不套用固定双槽的上下组合限制。
-- 槽位：恰好四个真实模块，每格一个 `InfoBlock` 或 `CardButton` 语义模块；不得用空槽凑数。
-- 禁止：卡级标题、CardHeader、公共标题行、格内第三行文字、格内按钮、第五个数据块。
-- 无 visual 的 `132×57vp` 信息槽必须使用 Column，把一至两个 Text 作为纵向连续信息组垂直居中；禁止用 Row 将两个 Text 横向摊开。只有存在右侧 Image、环或其它合法 visual 时才使用“左文字、右 visual”的 Row。
+```genui
+["root","Stack",{"width":"matchParent","height":"matchParent","borderRadius":20,"clip":true,"backgroundColor":"#FFF1F6FE"},["foreground"]]
+["foreground","Column",{"width":"matchParent","height":"matchParent","padding":12,"itemMargin":6,"alignItems":"start","justifyContent":"start"},["header","body"]]
+["header","CardHeader",{"title":"今日概览","fontColor":"#FF1F4799"}]
+["body","Column",{"width":276,"height":100,"itemMargin":8},["primary","details"]]
+["primary","Column",{"width":276,"height":60,"alignItems":"start","justifyContent":"start"},["primary_text"]]
+["primary_text","Text",{"content":"主要内容","fontSize":20,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["details","Column",{"width":276,"height":32,"alignItems":"start","justifyContent":"start"},["details_text"]]
+["details_text","Text",{"content":"补充说明","fontSize":12,"fontWeight":400,"fontColor":"#B31F4799","maxLines":1}]
+```
 
 ### `W-split-panels`（左右双区）
 
-- Sub-118：每侧独立选择 `core-center`、`title-content`、`title-dual-content`、`title-content-action`、`title-dual-column-action` 或 `content-dual-action`，分别使用 Sub-118-A/B/C/D/E/F 的几何和动作容量。
-- 用于：两个独立业务对象的同级展示，或同一语义组拆分为“核心结论 + 属性详情”的左右展示；同一对象的普通字段或多个动作本身不自动触发左右双区。满足时必须使用 `W-split-panels`，不得改选其它 2x4 骨架或自由拼接；若每侧的 `mustKeep` 超出容量，先删除 `shouldKeep` 并压缩到每侧最小充分信息，不得放到背板外或合并成公共区域。
-- region：无卡级总标题；`root Row` 以 `width/height:matchParent` 填满 `300×150vp` 画布，padding 12、itemMargin 12，直接包含左右两个 `132×126vp` 同级父背板。两背板均为 Column、padding 8，内部可用空间均为 `116×110vp`。这是 2x4 左右双区的合法一级布局，不得套用 2x2 `S-dual-info` 的上下结构，也不得改成上下两个全宽背板。
-- 背板内部布局：每侧必须从 Sub-118 关系中选择一种。`single-core` 用于无局部标题也能理解的单一主内容，内容双轴居中；`title-single` 使用自然高度局部标题，标题下间距 4vp，主体左对齐且贴内容区底端；`title-double` 的两个内容区等分剩余高度，主信息左上、明细左下，间距 6vp；`action-led` 使用局部标题 + 主内容组 + 底部 `116×36vp` 动作，标题至内容 4vp、内容至动作 6vp；`peer-metrics` 固定使用不可换行的单行局部标题以及两个 54vp 列，列间距 8vp，每列一个环形指标模块，可选底部动作；`dual-action` 固定为 `26 + 6 + 36 + 6 + 36 = 110vp`。每侧动作不存在时不保留按钮槽及相邻间距。任何 Sub-118 都禁止 `InfoBlock` 与 `CardButton` 语义模块。
-- 每侧按 Sub-118 的层级组织并独立选择内容变体；需要突出量化主值时按「对象名 + 主读数 + 必要辅助信息 + 可选底部按钮 116×36vp」排列。局部标题自然高度，标题至内容 4vp，其余主要区域间距 6vp；带按钮时正文从左上开始，按钮沉底。倒计时无动作且无需局部标题时可作为 single-core 双轴居中；需要对象名时使用 title-single，不自造三段均分结构。
-- 每个 `W-split-panels` 背板按 `150×150vp` 的 2x2 内容密度独立检查：内部 `12fp/400` 业务标题和底部 action 不计入信息行；使用 `30fp/38fp` 纯数字主值时，除主值/单位行外最多一条 `12fp/400` 辅助信息；纯文字或格式化主读数最多一条突出信息和两条 `12fp/400` 辅助信息；同级并行数据最多三条普通字号完整信息，不得制造多个突出焦点。普通窄行最多合并两个确实能完整显示的短事实；三个以上动态字段禁止串入同一个 Text。仍有行高时拆成独立 `12fp` 行，空间不足再删除最低优先级字段，不得移动到另一背板或背板外。多日天气的单日摘要可按下条规则合并更多同日字段。
-- 稀疏分区仍必须映射到 Sub-118：无局部标题且内容单独可理解时使用 `single-core` 双轴居中；有局部标题时使用 `title-single`，标题在上、主体左对齐并贴内容区底端。不得自造 `sparse-centered` 变体，也不得用弱字段填空。
-- 多日天气在 `W-split-panels` 内每一天只能使用一个 `12fp/400` Text。同一天同时提供完整日期和星期时优先保留短星期并删除完整日期；随后按“星期、天气、温度、降雨”顺序压入，例如 `周四 · 多云 · 25~32℃`，后续字段只有经宽度预算确认完整可见时才追加。禁止将一天拆成三行、缩小字号或依赖裁切，禁止在日期之间插入 Divider。三天天气可使用“业务标题 + 三条天气”的四行内容预算。
-- 多日天气行必须按 schema sampleValue 做 `116vp` 压力预算，温度范围必须完整显示，禁止输出残缺范围。超宽时优先缩短标签，再删除低优先级字段，不得依赖裁切。
-- action：每侧至多一个属于该业务的动作入口，必须使用可见 Button 或图文按钮 Row，并只把事件绑定该按钮。背板、root 和非动作内容不得绑定 `onClick`；即使 userQuery 表述为“点击卡片”或“点击某区域”，也必须落到所属业务的可见动作按钮，不得把整个父区作为点击边界。只有一侧有动作时，另一侧不生成按钮或空槽；不得生成卡级 action_area。先固定左右业务数据块再放 action，禁止为按钮新增数据块或改成 `W-content-side-slots`；动作参数绑定的数据根必须与所在背板显示的数据根一致，例如引用 `/data/weather/` 的天气动作只能放进天气背板，不能放进倒计时背板。音乐动作不得放进天气背板，未被用户明确要求且无法归属当前业务的动作必须删除。
-- 按钮空间：背板内动作固定 `116×36vp` 且标签保持完整单行。信息与动作竞争高度时，先删除最低优先级辅助字段，再缩短业务标题；禁止压缩按钮高度、把按钮推出背板或让动作标签出现省略号。
-- `W-split-panels` 动作文案同样只保留一个完整命令，禁止在按钮或图文动作内追加“点击打开”“进入设置”等重复提示。数值单位本身不能说明业务含义时，必须带短标签，例如“风力 2级”，不得只显示裸露的“2级”。
-- 去重：同一个候选动作在整卡只能出现一次。动作参数没有 `/data` 绑定时，按 userQuery 的业务语义选择唯一所属背板；无法明确归属时保留在用户首先强调的业务侧，不得为了左右对称复制到两个背板。
-- 动作保留：userQuery 明确要求的匹配动作属于 `mustKeep`。一个动作至少保留一个，明确要求两个动作时分别保留两个；信息过多时先压缩或删除辅助字段，禁止为了多显示一项数据而完全省略“打开歌单”“拨号”等入口。
-- title：所有标题必须先归属到左侧或右侧业务；没有突出数字时放入对应背板首项，有突出数字时紧邻该数字，必要对象名优先放在数字上方。地点、对象名或主题描述只要语义属于其中一个业务，就只能作为该业务标题；禁止放在两块背板上方形成卡级 title、CardHeader 或公共标题行。
-- 槽位：每侧一个业务标题、一个主内容组、至多一个业务动作；两侧使用同一卡片色板和同层级排版。
-- 禁止：上下双业务布局、两个全宽背板、卡级总标题、背板外动作、整卡点击、任意背板点击、左右业务共用按钮、第三业务。
+- 适用：两个需要完整内容区的对象，或同一主题的“核心结论 + 属性详情”。
+- 尺寸与闭合：左右父区均为 `132×126vp`，间距 `12vp`；每区 `padding:8`，内部为 `116×110vp`。
+- 动作：每侧至多一个所属动作，固定使用可见的 `116×36vp` Button；只绑定按钮，不绑定父背板。
+- 特例：两个独立业务各有一个直属动作且均能使用 Sub-118-D 时，即使内容量不等，也保持左右双区。
+- 限制：无卡级标题、公共内容行、公共按钮、背板外动作或第三业务。
 
-### 三对象内容预设（属于 `W-content-side-slots`）
+每侧从以下 Sub-118 子布局中选择一个：
 
-- 用于：恰好 3 个数据块；同一对象的多个字段或多个动作不增加数据块数量。用户明确强调的数据块放完整内容区，其余两个按出现顺序进入固定槽列；整体允许镜像。
-- region：无卡级标题；采用非对称双槽家族。root Row 固定 padding 12、itemMargin 12，一侧为 `132×126vp` 内容区，另一侧为 `132×126vp` 固定槽列；槽列使用 itemMargin 12，上下各放一个 `132×57vp` 槽。内容区允许位于左侧或右侧，两个方向完全镜像。
-- 区域完整性：三个槽都必须对应真实数据块，不允许只生成一个固定槽、复制内容区字段或用动作单独凑成第三个数据块。需要完整标题、主辅信息或可见按钮的数据块放内容区；另外两个对象必须各自能压缩为固定槽中的紧凑模块。主数据块没有明确来源时按 userQuery 出现顺序选择内容区对象，允许按阅读顺序镜像。
-- 内容区内部布局：从 Sub-140 中选择核心居中、标题单内容、标题双内容、内容四宫格、标题内容单按钮、标题主次内容单按钮、标题双列内容可选按钮或内容双按钮。局部标题至内容固定 6vp，其余主要区域固定 8vp；标题主次内容单按钮的主信息与紧密关联辅助信息是唯一例外，两者间距固定 2vp。标题双列内容使用不可换行的单行局部标题，并固定使用两个 62vp 环形指标列与 8vp 间距。两个固定槽不得把字段并入内容区内部子布局，`InfoBlock` 与 `CardButton` 语义模块也不得进入内容区。
-- 内容区需要突出量化主值时按「对象名 + 主读数 + 必要辅助信息 + 可选底部 Button 132×36vp」组织；有动作时只绑定内部按钮。固定槽列的两个模块各占 `132×57vp`，不得嵌套胶囊按钮。
-- action：内容区至多一个可见 Button，事件只绑定按钮；固定槽中的动作使用整个槽作为点击边界。root、槽列和非动作子组件不得绑定事件，同一事件不得重复绑定。
-- 槽位：内容区一个主数据块，固定槽列上下各一个数据块；无动作时不保留按钮或点击空槽，几何结构不变。
-- 禁止：卡级标题、CardHeader、公共标题行、左右三个等宽栏、固定信息槽内嵌套胶囊按钮、整张卡共用动作、第四个数据块；不得禁止合法镜像。
+| 子布局 | 固定结构与对齐 |
+|---|---|
+| `core-center` | 单一内容双轴居中 |
+| `title-content` | 局部标题 + `4vp` + 主体；主体左对齐并贴底 |
+| `title-dual-content` | 局部标题 + `4vp` + 两个等高内容区；区间 `6vp`，主信息左上、支撑信息左下 |
+| `title-content-action` | 局部标题 + `4vp` + 左上正文 + `6vp` + 底部 `116×36vp` 动作 |
+| `title-dual-column-action` | 单行局部标题 + `4vp` + 两个 `54vp` 环形指标列，列间距 `8vp`；可选底部动作，前置 `6vp` |
+| `content-dual-action` | `26 + 6 + 36 + 6 + 36 = 110vp` |
 
-骨架落地时还必须满足：
+`ring-detail` 是该布局的内容预设：左区使用 `core-center` 放置 `80-92vp` 环，右区使用
+`title-content` 放置标题和至多三行说明。
 
-- 2x2 的主显示组通常占安全内容区高度的 `40%-55%`；2x4 的主区域通常占安全内容区宽度的 `40%-62%`。动作是核心目标时可以增强动作区，但不得压过主状态的可读性。
-- 单业务骨架的主辅关系优先采用非对称比例；`S-dual-info`、`W-split-panels`、`W-content-side-slots`、`W-four-slots` 必须保持各自规定的固定分区尺寸，不得用本条改成自由主辅布局。
-- 普通文字或数据内容严格按正式布局对齐：`S-center` 双轴居中；`S-title-content` 主体左对齐并贴底；`S-title-dual-content` 主信息左上、支撑信息左下；两个带底部文字动作的布局正文从左上开始且动作沉底；`S-title-dual-column-action` 使用等宽列和统一基线；`S-title-anchor` 使用左下支撑与右下图标动作。专用 Progress、TimelineUnit 和倒计时只替换所属内容槽，不得改变这些顶层对齐关系。
-- 所有主要文字、数值、图标和动作至少形成一条共同对齐线。辅助信息围绕主焦点聚合，不散落四角。
-- 融球或用户指定的场景背景只配简单骨架和极少背板；2x4 浅色微渐变 root 的内容蒙版使用白色 60%，仅 `W-four-slots`、`W-split-panels`、`W-content-side-slots` 按固定骨架使用 4/2/3 块内容蒙版，其他骨架不复制多个迷你卡片。
-- 固定骨架只约束信息关系和几何结构，颜色统一按第十二节的业务映射和固定微渐变色板选择，不按骨架或尺寸自由取色。
+```genui
+["root","Row",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":12,"backgroundColor":"#FFF1F6FE"},["panel_a","panel_b"]]
+["panel_a","Column",{"width":132,"height":126,"padding":8,"borderRadius":12,"alignItems":"start","justifyContent":"center","backgroundColor":"#99FFFFFF"},["content_a"]]
+["content_a","Text",{"content":"业务 A","width":116,"fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["panel_b","Column",{"width":132,"height":126,"padding":8,"borderRadius":12,"alignItems":"start","justifyContent":"center","backgroundColor":"#99FFFFFF"},["content_b"]]
+["content_b","Text",{"content":"业务 B","width":116,"fontSize":18,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+```
 
+### `W-content-side-slots`（内容区 + 固定双槽）
+
+- 适用：一个完整内容区 + 两个真实紧凑信息或动作槽；允许整体镜像。
+- 尺寸与闭合：内容区 `132×126vp`；槽列 `132×126vp`，上下槽均为 `132×57vp`，间距 `12vp`。
+- 固定槽：信息使用 `InfoBlock`，动作使用 `CardButton`；最终均展开为标准组件。
+- 固定组合：只允许 `CardButton + CardButton`、`InfoBlock + InfoBlock`、`InfoBlock + CardButton`。
+- 动作：内容区动作使用内部 `132×36vp` Button；动作槽以整个槽为点击边界。事件只绑定所属按钮或动作槽。
+- 限制：两个固定槽必须同时存在，不复制字段、不生成空槽；固定槽不嵌套胶囊按钮。
+
+内容区从以下 Sub-140 子布局中选择一个：
+
+| 子布局 | 固定结构与对齐 |
+|---|---|
+| `core-center` | 单一内容在 `132×126vp` 内双轴居中 |
+| `title-content` | 局部标题 + `6vp` + 主体；主体左对齐并贴底 |
+| `title-dual-content` | 局部标题 + `6vp` + 主、辅内容；区间 `8vp`，主信息左上、支撑信息左下 |
+| `title-content-action` | 局部标题 + `6vp` + 左上正文 + `8vp` + 底部 `132×36vp` 动作 |
+| `title-primary-secondary-action` | 局部标题 + `6vp` + 主次连续组 + `8vp` + 动作；主次间距 `2vp` |
+| `title-dual-column-action` | 单行局部标题 + `6vp` + 两个 `62vp` 环形指标列，列间距 `8vp`；可选底部动作，前置 `8vp` |
+| `quad-content` | 四格 `62×59vp`，横纵间距均为 `8vp` |
+| `content-dual-action` | `38 + 8 + 36 + 8 + 36 = 126vp` |
+
+三对象预设仍使用本布局：主对象进入内容区，另外两个对象各占一个固定槽。动作不增加对象数；三个区域
+必须对应真实内容，不能把同一对象的字段拆开凑槽。
+
+`agenda-cta` 是本布局的内容预设：内容区放一个日程对象，固定槽列放两个真实动作；动作标签单行，
+可选右侧 `20×20vp` 图标。
+
+```genui
+["root","Row",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":12,"backgroundColor":"#FFF1F6FE"},["content","slots"]]
+["content","Column",{"width":132,"height":126,"alignItems":"start","justifyContent":"center"},["main"]]
+["main","Text",{"content":"主要内容","fontSize":20,"fontWeight":700,"fontColor":"#FF1F4799","maxLines":1}]
+["slots","Column",{"width":132,"height":126,"itemMargin":12},["info_slot","action_slot"]]
+["info_slot","Column",{"width":132,"height":57,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["info"]]
+["info","Text",{"content":"辅助信息","fontSize":14,"fontWeight":500,"fontColor":"#FF1F4799","maxLines":1}]
+["action_slot","Row",{"width":132,"height":57,"padding":12,"borderRadius":12,"alignItems":"center","backgroundColor":"#99FFFFFF","onClick":[{"call":"clickToDeeplink","args":{"intentName":"Settings","bundleName":"com.huawei.hmos.settings","abilityName":"com.huawei.hmos.settings.MainAbility","uri":"bluetooth_entry"}}]},["action_text"]]
+["action_text","Text",{"content":"设备设置","fontSize":14,"fontWeight":500,"fontColor":"#FF1F4799","maxLines":1}]
+```
+
+### `W-four-slots`（四槽宫格）
+
+- 适用：恰好四个同级、可独立表达的真实信息或动作模块。
+- 尺寸与闭合：四格均为 `132×57vp`，横纵间距均为 `12vp`。
+- 槽位：每格一个 `InfoBlock` 或 `CardButton`；四格可按业务关系自由混排。
+- 动作：`CardButton` 使用整个槽作为点击边界；`InfoBlock` 不支持事件。
+- 对齐：无 visual 的信息槽使用 Column，将一至两个 Text 纵向居中；有 visual 时才使用左文字、右 visual 的 Row。
+- 限制：无卡级标题、空槽、第五个模块、格内按钮或嵌套背板。
+
+```genui
+["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"itemMargin":12,"backgroundColor":"#FFF1F6FE"},["row_one","row_two"]]
+["row_one","Row",{"width":276,"height":57,"itemMargin":12},["slot_a","slot_b"]]
+["row_two","Row",{"width":276,"height":57,"itemMargin":12},["slot_c","slot_d"]]
+["slot_a","Column",{"width":132,"height":57,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["text_a"]]
+["text_a","Text",{"content":"模块 A","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+["slot_b","Column",{"width":132,"height":57,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["text_b"]]
+["text_b","Text",{"content":"模块 B","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+["slot_c","Column",{"width":132,"height":57,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["text_c"]]
+["text_c","Text",{"content":"模块 C","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+["slot_d","Column",{"width":132,"height":57,"padding":12,"borderRadius":12,"justifyContent":"center","backgroundColor":"#99FFFFFF"},["text_d"]]
+["text_d","Text",{"content":"模块 D","fontSize":14,"fontColor":"#FF1F4799","maxLines":1}]
+```
+
+以上布局按业务对象和动作归属选择，不按字段数量、组件数量或 `/data` 根数量机械切换。容量不足时先删除
+`shouldKeep`，再改选能承载全部 `mustKeep` 的布局；不得跨骨架拼接区域。
+布局落地时检查：
+
+- 一级区域数量、尺寸、间距和动作上限与所选布局一致。
+- 标题、主体、支撑信息和动作保持在所属父区域内，不跨业务共享标题或按钮。
+- 普通单业务采用明确主辅；固定分区布局保持登记尺寸，不改成自由比例。
+- 专用 Progress、TimelineUnit 和内容预设只替换所属内容槽，不改变一级几何。
+- 颜色按第十二节选择；布局 ID 不决定业务色。
 # 十、文字与信息适配
 
 只使用以下字号：
