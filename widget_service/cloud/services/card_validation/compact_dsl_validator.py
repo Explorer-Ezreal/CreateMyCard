@@ -35,14 +35,15 @@ _REFERENCE_CANVAS_HEIGHT = {
     "2x4": 150.0,
     "4x2": 150.0,
 }
-_TWO_BY_FOUR_MULTI_ROOT_PADDING = 8
-_TWO_BY_FOUR_MULTI_LARGE_WIDTH = 138
-_TWO_BY_FOUR_MULTI_LARGE_HEIGHT = 134
-_TWO_BY_FOUR_MULTI_INNER_WIDTH = 114
-_TWO_BY_FOUR_FOCUS_WIDTH = 136
-_TWO_BY_FOUR_AUX_WIDTH = 130
+_TWO_BY_FOUR_MULTI_ROOT_PADDING = 12
+_TWO_BY_FOUR_MULTI_ROOT_GAP = 12
+_TWO_BY_FOUR_MULTI_LARGE_WIDTH = 132
+_TWO_BY_FOUR_MULTI_LARGE_HEIGHT = 126
+_TWO_BY_FOUR_MULTI_INNER_WIDTH = 116
+_TWO_BY_FOUR_FOCUS_WIDTH = 132
+_TWO_BY_FOUR_AUX_WIDTH = 132
 _TWO_BY_FOUR_FOCUS_AUX_HEIGHT = 126
-_TWO_BY_FOUR_AUX_CELL_HEIGHT = 59
+_TWO_BY_FOUR_AUX_CELL_HEIGHT = 57
 _TWO_BY_TWO_HERO_SLOT_WIDTH = 126.0
 _TWO_BY_TWO_HERO_BOX_WIDTH = 106.0
 _TWO_BY_TWO_HERO_BOX_HEIGHT = 58.0
@@ -1197,7 +1198,7 @@ def _collect_two_by_four_small_backboard_errors(
             backboard.props.get("width"),
             backboard.props.get("height"),
         )
-        if dimensions != (138, 63):
+        if dimensions != (132, 57):
             continue
         descendants = _descendant_components(backboard, components_by_id)
         text_count = sum(
@@ -1241,7 +1242,7 @@ def _is_two_by_four_large_backboard(component: ComponentRow | None) -> bool:
         return False
     if component.props.get("height") != _TWO_BY_FOUR_MULTI_LARGE_HEIGHT:
         return False
-    return component.props.get("padding") == 12
+    return component.props.get("padding") == 8
 
 
 def _descendant_on_click_count(
@@ -1960,7 +1961,7 @@ def _collect_two_by_four_w9_content_errors(
                     if has_date and has_weekday:
                         errors.append(
                             f"2x4 W9 compact weather day {component_id} must not "
-                            "show both full date and weekday in the same 114vp "
+                            "show both full date and weekday in the same 116vp "
                             "row. Keep the weekday and remove the redundant date."
                         )
                     font_size = _non_negative_number(
@@ -2263,7 +2264,7 @@ def _has_two_by_four_w9_backboards(
         return False
     expected_root_layout = (
         root.props.get("padding") == _TWO_BY_FOUR_MULTI_ROOT_PADDING
-        and root.props.get("itemMargin") == 8
+        and root.props.get("itemMargin") == _TWO_BY_FOUR_MULTI_ROOT_GAP
     )
     if len(root.children) != 2 or not expected_root_layout:
         return False
@@ -2282,6 +2283,25 @@ def _is_two_by_four_focus_aux_cell(component: ComponentRow | None) -> bool:
         and component.props.get("height") == _TWO_BY_FOUR_AUX_CELL_HEIGHT
         and component.props.get("borderRadius") == 12
         and "backgroundColor" in component.props
+    )
+
+
+def _is_two_by_four_aux_column(
+    component: ComponentRow | None,
+    components_by_id: dict[str, ComponentRow],
+) -> bool:
+    if component is None or component.component_type != "Column":
+        return False
+    if (
+        component.props.get("width") != _TWO_BY_FOUR_AUX_WIDTH
+        or component.props.get("height") != _TWO_BY_FOUR_FOCUS_AUX_HEIGHT
+        or component.props.get("itemMargin") != 12
+        or len(component.children) != 2
+    ):
+        return False
+    return all(
+        _is_two_by_four_focus_aux_cell(components_by_id.get(cell_id))
+        for cell_id in component.children
     )
 
 
@@ -2340,7 +2360,7 @@ def _collect_two_by_four_aux_icon_errors(
         if _has_expected_two_by_four_aux_icon_layout(cell, components_by_id):
             continue
         errors.append(
-            f"2x4 130x59 auxiliary backboard {cell.component_id} with an icon "
+            f"2x4 132x57 auxiliary slot {cell.component_id} with an icon "
             "must contain exactly one one-line Text or one 1-2 line text Column "
             "plus one Image. The converter normalizes the cell to left-aligned "
             "text and a 20x20vp Image on the right."
@@ -2355,14 +2375,24 @@ def _has_two_by_four_w1_focus_aux(
         return False
     if (
         root.props.get("padding") != 12
-        or root.props.get("itemMargin") != 10
+        or root.props.get("itemMargin") != 12
         or len(root.children) != 2
     ):
         return False
 
-    focus = components_by_id.get(root.children[0])
-    aux_column = components_by_id.get(root.children[1])
-    if focus is None or focus.component_type not in {"Row", "Column"}:
+    first = components_by_id.get(root.children[0])
+    second = components_by_id.get(root.children[1])
+    if first is None or second is None:
+        return False
+    if _is_two_by_four_aux_column(first, components_by_id):
+        aux_column = first
+        focus = second
+    elif _is_two_by_four_aux_column(second, components_by_id):
+        focus = first
+        aux_column = second
+    else:
+        return False
+    if focus.component_type not in {"Row", "Column"}:
         return False
     if (
         focus.props.get("width") != _TWO_BY_FOUR_FOCUS_WIDTH
@@ -2370,19 +2400,7 @@ def _has_two_by_four_w1_focus_aux(
         or "backgroundColor" in focus.props
     ):
         return False
-    if aux_column is None or aux_column.component_type != "Column":
-        return False
-    if (
-        aux_column.props.get("width") != _TWO_BY_FOUR_AUX_WIDTH
-        or aux_column.props.get("height") != _TWO_BY_FOUR_FOCUS_AUX_HEIGHT
-        or aux_column.props.get("itemMargin") != 8
-        or len(aux_column.children) != 2
-    ):
-        return False
-    return all(
-        _is_two_by_four_focus_aux_cell(components_by_id.get(cell_id))
-        for cell_id in aux_column.children
-    )
+    return _is_two_by_four_aux_column(aux_column, components_by_id)
 
 
 def _collect_two_by_four_w1_focus_alignment_errors(
@@ -2416,18 +2434,22 @@ def _collect_two_by_four_w1_focus_alignment_errors(
         )
         return
 
-    if focus.props.get("justifyContent") != "center":
+    allowed_justification = {"start", "center", "end"}
+    if focus.props.get("justifyContent") not in allowed_justification:
         errors.append(
-            "2x4 W1-focus-aux compact left content must use justifyContent "
-            "center so its information group is vertically centered instead "
-            "of being pinned to the top."
+            "2x4 W1 content zone must use a registered Sub-140 alignment: "
+            "start, center, or end. Distributed alignment cannot replace its gaps."
         )
-    requires_horizontal_center = has_large_focus or text_count <= 2
-    if requires_horizontal_center and focus.props.get("alignItems") != "center":
+    requires_horizontal_center = (
+        focus.props.get("justifyContent") == "center"
+        and (has_large_focus or text_count <= 2)
+    )
+    if requires_horizontal_center and focus.props.get("alignItems") not in {
+        "start",
+        "center",
+    }:
         errors.append(
-            "2x4 W1-focus-aux sparse or value-led left content must use "
-            "alignItems center. Event lists and dense summaries may remain "
-            "left-aligned, but their full group must still be vertically centered."
+            "2x4 W1 centered content must use start or center horizontal alignment."
         )
 
     for child_id in focus.children:
@@ -2445,18 +2467,11 @@ def _collect_two_by_four_w1_focus_alignment_errors(
                 break
         if not has_text:
             continue
-        if child.props.get("justifyContent") != "center":
+        if child.props.get("justifyContent") not in allowed_justification:
             errors.append(
                 f"2x4 W1-focus-aux left content group {child.component_id} must "
-                "use justifyContent center so its compact text group is not "
-                "pinned to the top or left."
+                "use start, center, or end according to its registered Sub-140 variant."
             )
-        if child.component_type == "Column" and requires_horizontal_center:
-            if child.props.get("alignItems") != "center":
-                errors.append(
-                    f"2x4 W1-focus-aux left content Column "
-                    f"{child.component_id} must use alignItems center."
-                )
 
 
 def _collect_two_by_four_w1_focus_aux_errors(
@@ -2465,8 +2480,14 @@ def _collect_two_by_four_w1_focus_aux_errors(
     task_spec: dict[str, Any],
     errors: list[str],
 ) -> None:
-    focus = components_by_id.get(root.children[0])
-    aux_column = components_by_id.get(root.children[1])
+    first = components_by_id.get(root.children[0])
+    second = components_by_id.get(root.children[1])
+    if _is_two_by_four_aux_column(first, components_by_id):
+        aux_column = first
+        focus = second
+    else:
+        focus = first
+        aux_column = second
     if focus is None or aux_column is None:
         return
 
@@ -2781,7 +2802,7 @@ def _collect_two_by_four_w9_weather_triplet_errors(
         errors.append(
             f"2x4 W9 weather backboard {zone.component_id} with temperature, "
             "rain and air-quality rows must omit decorative icons so all three "
-            "facts fit in the 114vp content width."
+            "facts fit in the 116vp content width."
         )
 
     for field_name, (_, label) in weather_fields.items():
@@ -2820,9 +2841,9 @@ def _is_two_by_four_small_backboard(component: ComponentRow | None) -> bool:
         return False
     expected_size = (
         component.props.get("width") == _TWO_BY_FOUR_MULTI_LARGE_WIDTH
-        and component.props.get("height") == 63
+        and component.props.get("height") == 57
     )
-    return expected_size and component.props.get("padding") == 12
+    return expected_size
 
 
 def _has_two_by_four_w8_backboards(
@@ -2833,7 +2854,7 @@ def _has_two_by_four_w8_backboards(
         return False
     root_layout_valid = (
         root.props.get("padding") == _TWO_BY_FOUR_MULTI_ROOT_PADDING
-        and root.props.get("itemMargin") == 8
+        and root.props.get("itemMargin") == _TWO_BY_FOUR_MULTI_ROOT_GAP
         and len(root.children) == 2
     )
     if not root_layout_valid:
@@ -2843,9 +2864,9 @@ def _has_two_by_four_w8_backboards(
         if row is None or row.component_type != "Row":
             return False
         row_layout_valid = (
-            row.props.get("width") == 284
-            and row.props.get("height") == 63
-            and row.props.get("itemMargin") == 8
+            row.props.get("width") == 276
+            and row.props.get("height") == 57
+            and row.props.get("itemMargin") == 12
             and len(row.children) == 2
         )
         if not row_layout_valid:
@@ -2866,32 +2887,27 @@ def _has_two_by_four_w10_backboards(
         return False
     root_layout_valid = (
         root.props.get("padding") == _TWO_BY_FOUR_MULTI_ROOT_PADDING
-        and root.props.get("itemMargin") == 8
+        and root.props.get("itemMargin") == _TWO_BY_FOUR_MULTI_ROOT_GAP
         and len(root.children) == 2
     )
     if not root_layout_valid:
         return False
     first = components_by_id.get(root.children[0])
     second = components_by_id.get(root.children[1])
-    if _is_two_by_four_large_backboard(first):
-        side = second
-    elif _is_two_by_four_large_backboard(second):
+    if first is None or second is None:
+        return False
+    if _is_two_by_four_aux_column(first, components_by_id):
         side = first
+        content = second
+    elif _is_two_by_four_aux_column(second, components_by_id):
+        content = first
+        side = second
     else:
         return False
-    if side is None or side.component_type != "Column":
-        return False
-    side_layout_valid = (
-        side.props.get("width") == _TWO_BY_FOUR_MULTI_LARGE_WIDTH
-        and side.props.get("height") == _TWO_BY_FOUR_MULTI_LARGE_HEIGHT
-        and side.props.get("itemMargin") == 8
-        and len(side.children) == 2
-    )
-    if not side_layout_valid:
-        return False
-    return all(
-        _is_two_by_four_small_backboard(components_by_id.get(zone_id))
-        for zone_id in side.children
+    return (
+        content.component_type in {"Row", "Column"}
+        and content.props.get("width") == _TWO_BY_FOUR_MULTI_LARGE_WIDTH
+        and content.props.get("height") == _TWO_BY_FOUR_MULTI_LARGE_HEIGHT
     )
 
 
@@ -3484,47 +3500,44 @@ def _collect_two_by_four_countdown_backboard_errors(
         child = components_by_id.get(child_id)
         if child is not None:
             direct_children.append(child)
-    has_three_children = len(direct_children) == 3
-    has_three_texts = has_three_children and all(
-        child.component_type == "Text" for child in direct_children
-    )
-    if not has_three_texts:
+    if len(direct_children) != 2:
         errors.append(
-            f"2x4 countdown backboard {backboard.component_id} without an action "
-            "must directly contain exactly three Text children: target title, "
-            "numeric countdown, and unit `天`. Do not nest a content/readout "
-            "Column or add a fourth auxiliary line."
+            f"2x4 countdown parent zone {backboard.component_id} without an action "
+            "must use Sub-118 title-single: a local title followed by one flexible "
+            "content group."
         )
         return
 
-    title, value, unit = direct_children
-    value_paths = _component_content_paths(value)
-    is_countdown_value = any(
-        path.casefold().endswith("/countdowndays") for path in value_paths
+    title, content = direct_children
+    valid_title_single = (
+        title.component_type in {"Text", "Row"}
+        and content.component_type == "Column"
+        and content.props.get("layoutWeight") == 1
+        and content.props.get("justifyContent") == "end"
+        and content.props.get("alignItems") in {None, "start"}
     )
-    if not is_countdown_value or unit.props.get("content") != "天":
+    if not valid_title_single:
         errors.append(
-            f"2x4 countdown backboard {backboard.component_id} must order its "
-            "three Text children as target title, countdownDays value, and unit `天`."
+            f"2x4 countdown parent zone {backboard.component_id} must place its "
+            "local title first and use a layoutWeight 1, bottom-aligned content Column."
         )
+        return
 
-    has_balanced_distribution = (
-        backboard.props.get("justifyContent") == "spaceBetween"
-        and backboard.props.get("alignItems") == "center"
-    )
-    if not has_balanced_distribution:
-        errors.append(
-            f"2x4 countdown backboard {backboard.component_id} must use "
-            'justifyContent "spaceBetween" and alignItems "center" so the '
-            "title, number, and unit have balanced vertical spacing."
-        )
-
-    for child in (title, value, unit):
-        if child.props.get("width") == 114 and child.props.get("textAlign") == "center":
+    content_descendants = [content, *_descendant_components(content, components_by_id)]
+    countdown_texts = []
+    unit_texts = []
+    for component in content_descendants:
+        if component.component_type != "Text":
             continue
+        paths = _component_content_paths(component)
+        if any(path.casefold().endswith("/countdowndays") for path in paths):
+            countdown_texts.append(component)
+        if component.props.get("content") == "天":
+            unit_texts.append(component)
+    if len(countdown_texts) != 1 or len(unit_texts) != 1:
         errors.append(
-            f"2x4 countdown Text {child.component_id} must use width 114 and "
-            "textAlign center inside the balanced countdown backboard."
+            f"2x4 countdown content in {backboard.component_id} must contain one "
+            "countdownDays value and one unit `天` inside the bottom-aligned group."
         )
 
 
@@ -3651,7 +3664,7 @@ def _collect_layout_route_errors(
                 errors.append(
                     f"2x4 large backboard {component.component_id} may contain at "
                     "most one action control. Do not stack two buttons inside a "
-                    "138x134 backboard; remove duplicate or lower-priority actions."
+                    "132x126 parent zone; remove duplicate or lower-priority actions."
                 )
 
     if size == "2x2" and len(data_roots) == 1:
@@ -3696,9 +3709,9 @@ def _collect_layout_route_errors(
             return
         errors.append(
             "2x4 card has one dominant focus and at most two auxiliary slots and "
-            "must use W1-focus-aux: root Row padding 12/itemMargin 10, a left "
-            "136x126 focus zone without a backboard, and a right 130x126 Column "
-            "containing two 130x59 backboards separated by itemMargin 8."
+            "must use W1-focus-aux: root Row padding 12/itemMargin 12, one "
+            "132x126 content zone and one 132x126 fixed-slot Column containing "
+            "two 132x57 slots separated by itemMargin 12. Either side may host content."
         )
         return
 
@@ -3710,9 +3723,9 @@ def _collect_layout_route_errors(
                 return
             errors.append(
                 "2x4 card displays at least four semantic metric groups and must use W8: "
-                "root must be a Column with padding 8 and two direct 284x63 "
-                "Rows separated by itemMargin 8; each Row must contain two "
-                "138x63 backboards separated by itemMargin 8. Merge naturally "
+                "root must be a Column with padding 12 and two direct 276x57 "
+                "Rows separated by itemMargin 12; each Row must contain two "
+                "132x57 slots separated by itemMargin 12. Merge naturally "
                 "related weather facts before dropping the lowest-priority group."
             )
             return
@@ -3721,9 +3734,9 @@ def _collect_layout_route_errors(
                 return
             errors.append(
                 "2x4 card displays three semantic data blocks and must use W10: "
-                "root must be a Row with padding 8 and itemMargin 8, containing "
-                "one 138x134 large backboard and one 138x134 Column with two "
-                "138x63 backboards separated by itemMargin 8."
+                "root must be a Row with padding 12 and itemMargin 12, containing "
+                "one 132x126 content zone and one 132x126 Column with two "
+                "132x57 slots separated by itemMargin 12; horizontal mirror is allowed."
             )
             return
     if (
@@ -3805,8 +3818,8 @@ def _collect_layout_route_errors(
     roots = ", ".join(sorted(data_roots))
     errors.append(
         f"2x4 card displays two semantic data blocks ({roots}) and must use W9: "
-        "root must be a Row with padding 8 and exactly two direct 138x134 "
-        "Column backboards with itemMargin 8. Do not use a shared title, a shared action area, or "
+        "root must be a Row with padding 12 and exactly two direct 132x126 "
+        "Column parent zones with itemMargin 12. Do not use a shared title, a shared action area, or "
         "stacked full-width business rows."
     )
 
@@ -3943,13 +3956,18 @@ def _collect_two_by_four_w9_sparse_layout_errors(
         child = components_by_id.get(child_id)
         if child is None or child.component_type != "Column" or child in actions:
             continue
-        if child.props.get("layoutWeight") == 1 and child.props.get("justifyContent") == "center":
+        is_flexible_content = child.props.get("layoutWeight") == 1
+        uses_registered_alignment = child.props.get("justifyContent") in {
+            "center",
+            "end",
+        }
+        if is_flexible_content and uses_registered_alignment:
             return
     suffix = " with its action area" if actions else ""
     errors.append(
         f"2x4 W9 sparse backboard {zone.component_id}{suffix} must use a direct content "
-        "Column with layoutWeight 1 and justifyContent center so the primary content "
-        "group remains vertically centered."
+        "Column with layoutWeight 1 and justifyContent center for single-core, or end "
+        "for title-single so the subject follows a registered Sub-118 alignment."
     )
 
 
