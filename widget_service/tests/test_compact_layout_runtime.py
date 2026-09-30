@@ -1,7 +1,9 @@
 """验证版本化布局契约与正式 Few-shot 保持一致。"""
 
+import json
 import re
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -15,40 +17,27 @@ from services.compact_layout_runtime import (
     match_compact_layout,
 )
 from services.compact_prompt_loader import assemble_prompts
+from services.prompt_builder import PromptBuilder
 
 PROMPT_SOURCE = (
     Path(__file__).resolve().parents[1]
     / "cloud/data/protocol_profiles/design-compact-dsl-fusion/prompt_source"
 )
 PROMPTS = assemble_prompts(PROMPT_SOURCE)
-FEW_SHOT_LAYOUTS = {
-    "2x2-V00": "S-center",
-    "2x2-V01": "S-title-dual-content",
-    "2x2-V02": "S-title-content-action",
-    "2x2-V03": "S-title-anchor",
-    "2x2-V04": "S-dual-info",
-    "2x2-V05": "S-title-dual-column-action",
-    "2x2-V06": "S-content-dual-action",
-    "2x4-V00": "W-top-bottom",
-    "2x4-V01": "W-top-bottom",
-    "2x4-V02": "W-split-panels",
-    "2x4-V03": "W-content-side-slots",
-    "2x4-V04": "W-four-slots",
-    "2x4-V05": "W-content-side-slots",
-    "2x4-V06": "W-split-panels",
-}
-
-
-def _few_shots() -> list[tuple[str, str, str]]:
-    examples: list[tuple[str, str, str]] = []
+def _few_shots() -> list[tuple[str, str, str, str]]:
+    examples: list[tuple[str, str, str, str]] = []
     for size in ("2x2", "2x4"):
         document = PROMPTS[f"fewshot_{size}"]
         for section in re.split(r"(?m)^## ", document)[1:]:
             identifier = re.search(rf"({size}-V\d\d)", section)
+            task = re.search(r"### user\s*\n```json\s*\n(.*?)\n```", section, re.S)
             source = re.search(r"```genui\s*\n(.*?)\n```", section, re.S)
             assert identifier is not None
+            assert task is not None
             assert source is not None
-            examples.append((identifier.group(1), size, source.group(1)))
+            task_spec = SimpleNamespace(**json.loads(task.group(1)))
+            layout_scope = PromptBuilder._layout_scope(task_spec)
+            examples.append((identifier.group(1), size, layout_scope, source.group(1)))
     return examples
 
 
@@ -71,6 +60,38 @@ def _layout_examples() -> list[tuple[str, str, str]]:
                 assert source is not None, layout_id
                 examples.append((layout_id, size, source.group(1)))
     return examples
+
+
+def _layout_example(layout_id: str) -> str:
+    for current_id, _, source in _layout_examples():
+        if current_id == layout_id:
+            return source
+    raise AssertionError(f"Missing layout example: {layout_id}")
+
+
+def _mutate_rows(source: str, mutator) -> str:
+    output: list[str] = []
+    for line in source.splitlines():
+        row = json.loads(line)
+        mutator(row)
+        output.append(json.dumps(row, ensure_ascii=False, separators=(",", ":")))
+    return "\n".join(output)
+
+
+def _task_spec_for_source(source: str, *, size: str) -> dict:
+    event_candidates: list[dict] = []
+    for line in source.splitlines():
+        row = json.loads(line)
+        if len(row) < 3:
+            continue
+        event_candidates.extend(row[2].get("onClick", []))
+    return {
+        "userQuery": "布局契约测试",
+        "size": size,
+        "eventCandidates": event_candidates,
+        "assetCandidates": [],
+        "dataModelSchema": {"data": {}},
+    }
 
 
 def test_layout_contract_registers_the_documented_layouts() -> None:
@@ -97,23 +118,25 @@ def test_layout_contract_registers_the_documented_layouts() -> None:
 
 
 @pytest.mark.parametrize(
-    "identifier,size,source",
+    "identifier,size,layout_scope,source",
     _few_shots(),
     ids=[item[0] for item in _few_shots()],
 )
 def test_formal_few_shot_matches_its_layout(
     identifier: str,
     size: str,
+    layout_scope: str,
     source: str,
 ) -> None:
-    expected = FEW_SHOT_LAYOUTS.get(identifier)
-    assert expected is not None
     result = match_compact_layout(
         _components(source),
         size=size,
-        layout_scope=expected,
+        layout_scope=layout_scope,
     )
-    assert result.layout_id == expected
+    assert result.layout_id in load_layout_contract()["scopes"].get(
+        layout_scope,
+        [layout_scope],
+    )
 
 
 @pytest.mark.parametrize(
@@ -152,10 +175,93 @@ def test_layout_scope_rejects_wrong_geometry_before_expansion() -> None:
 
 
 def test_unknown_layout_scope_is_rejected() -> None:
-    _, _, source = _few_shots()[0]
+    _, _, _, source = _few_shots()[0]
     with pytest.raises(CompactLayoutRuntimeError, match="Unknown Compact layout scope"):
         match_compact_layout(
             _components(source),
             size="2x2",
             layout_scope="S-unknown",
+        )
+
+
+def test_s_dual_info_rejects_non_contract_slot_heights() -> None:
+    source = _layout_example("S-dual-info")
+
+    def mutate(row: list) -> None:
+        if row[0] == "zone_a":
+            row[2]["height"] = 55
+        if row[0] == "zone_b":
+            row[2]["height"] = 71
+
+    invalid_source = _mutate_rows(source, mutate)
+    with pytest.raises(CompactDslValidationError, match="height"):
+        validate_compact_dsl(
+            invalid_source,
+            task_spec=_task_spec_for_source(invalid_source, size="2x2"),
+            card_spec={"suggestSize": "2x2", "dataBindings": []},
+            layout_scope="S-dual-info",
+        )
+
+
+def test_w_content_side_slots_rejects_non_contract_slot_heights() -> None:
+    source = _layout_example("W-content-side-slots")
+
+    def mutate(row: list) -> None:
+        if row[0] == "info_slot":
+            row[2]["height"] = 50
+        if row[0] == "action_slot":
+            row[2]["height"] = 64
+
+    invalid_source = _mutate_rows(source, mutate)
+    with pytest.raises(CompactDslValidationError, match="height"):
+        validate_compact_dsl(
+            invalid_source,
+            task_spec=_task_spec_for_source(invalid_source, size="2x4"),
+            card_spec={"suggestSize": "2x4", "dataBindings": []},
+            layout_scope="W-content-side-slots",
+        )
+
+
+def test_w_content_side_slots_rejects_action_then_information() -> None:
+    source = _layout_example("W-content-side-slots")
+
+    def mutate(row: list) -> None:
+        if row[0] == "info_slot":
+            row[1] = "CardButton"
+            row[2]["onClick"] = [
+                {"call": "clickToDeeplink", "args": {"intentName": "Settings"}}
+            ]
+        if row[0] == "action_slot":
+            row[1] = "InfoBlock"
+            row[2].pop("onClick", None)
+
+    with pytest.raises(CompactLayoutRuntimeError, match="W-content-side-slots"):
+        match_compact_layout(
+            _components(_mutate_rows(source, mutate)),
+            size="2x4",
+            layout_scope="W-content-side-slots",
+        )
+
+
+def test_w_content_side_slots_rejects_event_on_information_slot() -> None:
+    source = _layout_example("W-content-side-slots")
+    action: list[dict] = []
+    for line in source.splitlines():
+        row = json.loads(line)
+        if row[0] == "action_slot":
+            action = row[2]["onClick"]
+
+    def mutate(row: list) -> None:
+        if row[0] == "info_slot":
+            row[2]["onClick"] = action
+        if row[0] == "action_slot":
+            row[2].pop("onClick", None)
+
+    invalid_source = _mutate_rows(source, mutate)
+    with pytest.raises(CompactDslValidationError, match="event"):
+        validate_compact_dsl(
+            invalid_source,
+            task_spec=_task_spec_for_source(invalid_source, size="2x4"),
+            card_spec={"suggestSize": "2x4", "dataBindings": []},
+            layout_scope="W-content-side-slots",
         )

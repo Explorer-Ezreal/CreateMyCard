@@ -41,15 +41,15 @@
 
 | 组件 | 语义合同 | Props | 正式 Few-shot |
 |---|---|---|---|
-| `EmphasizedData` | 一个核心数值与可选静态单位；值已含单位时不再传单位 | `value`、`fontColor` 必填；`unit` 可选 | 2x2 V02 |
-| `InfoBlock` | 固定小槽内的一组主信息、辅助信息与可选右侧图标；不承载完整业务区或事件 | `primaryText`、`secondaryText`、`fontColor`、`backgroundColor` 必填；`variant`、`icon`、`fillColor` 可选 | 2x2 V04；2x4 V03/V05 |
+| `EmphasizedData` | 一个核心数值与可选静态单位；值已含单位时不再传单位 | `value`、`fontColor` 必填；`unit` 可选 | 2x2 V18；2x4 V04 |
+| `InfoBlock` | 固定小槽内的一组主信息、辅助信息与可选右侧图标；不承载完整业务区或事件 | `primaryText`、`secondaryText`、`fontColor`、`backgroundColor` 必填；`variant`、`icon`、`fillColor` 可选 | 2x2 V05/V20；2x4 V04/V18 |
 | `ProgressLine2` | 可见读数与同一真实比例的线性进度；不能只显示进度条 | `value`、`total`、`displayValue`、`fontColor`、`color`、`backgroundColor` 必填；`unit` 可选 | - |
 | `TableText` | 同一主题下 2–3 行对齐的标签—值，不制造单一 hero | `items`、`fontColor` 必填；每项包含 `label`、`value` | - |
 | `TextBlock` | 两个同级详情背板；每项是一组标签和值 | `items`、`fontColor`、`backgroundColor` 必填 | - |
-| `CardButton` | 固定动作背板；整块只承载一个真实动作 | `label`、`onClick`、`fontColor`、`backgroundColor` 必填；`icon`、`fillColor` 可选 | 2x4 V03/V04/V05 |
+| `CardButton` | 固定动作背板；整块只承载一个真实动作 | `label`、`onClick`、`fontColor`、`backgroundColor` 必填；`icon`、`fillColor` 可选 | 2x4 V08/V12/V18/V19/V20 |
 | `ProgressCircleSingle` | 一个真实环形比例、环心图标和右侧读数 | `value`、`total`、`icon`、`displayValue`、`label` 与配色必填；`secondaryLabel` 可选 | - |
 | `EventCard` | 单会议的时间线、标题、时间与可选地点 | `title`、`time`、`fontColor` 必填；`location` 可选 | - |
-| `DataDisplay` | 一个标签、核心值和短支撑文本 | `label`、`value`、`supportingText`、`fontColor` 必填 | 2x2 V00 |
+| `DataDisplay` | 一个标签、核心值和静态短支撑文本 | `label`、`value`、`supportingText`、`fontColor` 必填 | 2x2 V16 |
 | `TopTextBottomValue` | 三项等权的标签、数值和单位 | `items`、`fontColor`、`dividerColor` 必填；每项包含 `label`、`value`、`unit` | - |
 | `SummaryList` | 2–3 条同级短摘要 | `items`、`fontColor`、`backgroundColor` 必填 | - |
 
@@ -222,6 +222,7 @@ props 可用文字样式和通用布局与样式字段。
 - CTA 是受保护文本，必须完整显示；但除非用户明确指定必须逐字保留，生成时应先将按钮文案压缩为不改变动作目标的最短自然表达。
 - Button 文案只保留“动作 + 必要对象”，删除不影响动作的状态、原因、结果预告、礼貌词和交互提示。例如使用“导航回家”“打开天气”“查看详情”“清理内存”，不使用“下雨了，点击导航回家”“立即一键清理内存”“点击这里查看天气详情”。
 - `2x2` 的 Button/图文按钮文案优先为 2 至 4 个汉字，最多 6 个汉字；`2x4` 优先不超过 6 个汉字，最多 8 个汉字。确需更长且不能等义缩短时，必须使用更宽按钮或降低到批准字号，不能裁切。
+- 上述字数建议不是所有操作组件的共同容量。`CardButton` 的实际文字区更窄，通常只用2至4个汉字；不能按普通全宽Button的6至8字建议填入该组件。不能等义缩短的必要目标使用同槽位基础文字动作，不改变候选事件。
 - Button 的最小内容宽度按 `压力文本宽度 × 1.2 + 左右 padding` 计算；先精简文案，再调整宽度，最后才允许降到 `12fp`。不得通过 `ellipsis`、`clip`、极窄宽度或低于 `12fp` 的按钮文字解决溢出。
 
 ## 5.8 Row
@@ -299,6 +300,11 @@ props 可用样式字段：
 可另传共同规则中的外部布局 Props；不传 padding、圆角、字号或对齐覆盖内部样式。内容字段支持静态值、完整
 Expression 或 PathBinding；颜色必须是静态 `#AARRGGBB`。
 
+使用优先级是信息完整、可读性、组件复用。高阶组件不是强制替换：先核对必需内容，再按组件实际
+行高、字号、padding、图标和剩余文字宽度核算；不够放时优先取消可选图标，仍不够则改用基础组合。
+例如 `DataDisplay` 不是多指标卡的通用回退，`InfoBlock` 不能装下任意长的单位串，进度组件不能从
+带单位字符串中猜测数值。Recipe 内部不可调的字号不等于卡片其余区域必须跟着放大。
+
 ### 5.12.2 `EmphasizedData`
 
 #### 选择条件
@@ -351,6 +357,11 @@ Expression 或 PathBinding；颜色必须是静态 `#AARRGGBB`。
 
 每个合法固定槽只放一个 `InfoBlock`，两行文字都必须保持单行可读。尺寸、variant 和具体槽位由 2x2/2x4
 组件文件规定。
+
+文字宽度不是背板宽度：扣除左右各8vp，带图标再扣24vp及4vp间距。当前2x2文字区无图标118vp、
+有图标90vp；2x4为116vp或88vp。先放完整必要值，再用另一行表达短标签或状态，不把“会议开始”等
+长前缀拼在时间前导致时间省略。用户没要求会议名时不为凑主辅行添加会议名；必要值放不下先取消图标，
+仍不够则使用基础分行内容。组件自带 ellipsis 只是防御机制，不是允许裁掉必要信息。
 
 #### 示例
 
@@ -417,6 +428,11 @@ Expression 或 PathBinding；颜色必须是静态 `#AARRGGBB`。
 #### 槽位与容量
 
 只进入 2x2 `S-title-dual-content` 的紧凑明细区。卡级标题、沉底上下文和动作不进入 `items`。
+
+两行真实最小高度为 `16+2+16=34vp`，三行为 `52vp`；外面用明确高度、不可收缩的 Column 槽承载。
+外部还有主信息或按钮时，先从总高度扣除它们。不能把组件的 layoutWeight 当成零高度，也不能放进
+不足34/52vp的剩余空间。带动作卡中的全部正文只有约56–58vp时，优先用三行完整基础短文本，
+不要同时使用大号主值、额外标签和表格。
 
 #### 示例
 
@@ -489,7 +505,10 @@ Expression 或 PathBinding；颜色必须是静态 `#AARRGGBB`。
 
 #### 注意事项
 
-事件必须逐字复用当前候选。无图标时文字占满可用区域且不留空槽；`fillColor` 不能脱离 `icon` 使用。
+事件必须逐字复用当前候选。当前 Recipe 即使无图标也保留24vp中性视觉占位，文字宽度按槽宽减去
+左右24vp内边距、24vp视觉位及8vp间距计算；132vp槽只剩76vp。动作应使用“查看天气”“电池设置”
+这类完整短命令，已有分区标识时不重复拼城市或设备名。放不下且无法无歧义缩短时用合法基础文字动作
+组合，不改 Recipe、不伪造图标、不让必要动作名省略。`fillColor` 不能脱离 `icon` 使用。
 
 ### 5.12.8 `ProgressCircleSingle`
 
@@ -733,7 +752,7 @@ Expression 或 PathBinding；颜色必须是静态 `#AARRGGBB`。
 - 标题文字固定 `12fp/400`，不得加粗，不得因场景或示例升到 `14/16fp` 或 `500/700`。
 - `2x2` 顶部第一行文字信息若不是 CardHeader，必须为纯文字，不在文字前后或该行右侧配图标；无论它被命名为标题、倒计时、状态或业务说明，也无论左对齐、居中、单业务或多业务，都执行本条。例如「北京出差还有 30 天出发」不生成飞机 Image 或图标槽。其他居中标题或说明行同样只用文字；用户明确要求图标时除外。不得将首行前缀图标解释为内容区主视觉来绕过本条；`S-dual-info` 双业务分区主视觉不属于顶部标题行，仅与进度环内图标、图文按钮一起按 2.5 节允许位置、总数和互斥规则执行。
 - 标题图标仅在已分配图标名额时显示，固定 `20×20vp`，通常位于标题行右侧；在 `2x2` 标题行中必须贴安全区右上角，右边缘距 root 右边 `12vp`。
-- `2x2` 和 `2x4` 的所有图标，包括标题、按钮、分区及进度环内图标，全部固定 `20×20vp`，不存在普通、辅助或主视觉图标的尺寸分档，也不因用户要求或布局角色改用其他尺寸；按钮点击外框、进度环和真实内容图片不属于图标尺寸，不随之修改。
+- 基础组合中的图标遵循所在布局预算，未单独规定时使用 `20×20vp`；高阶组件内部图标尺寸由 Recipe 决定，例如 `InfoBlock` 与 `CardButton` 的 `24×24vp` 视觉，不以通用图标规则覆盖。按钮点击外框、进度环和真实内容图片不属于图标尺寸。
 - 同一卡片图标风格、色彩角色和视觉重量保持一致。
 - 多来源组合卡不使用某一个 App 图标冒充整卡身份。
 

@@ -11,6 +11,10 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from services.compact_component_runtime import (
+    CompactComponentRuntimeError,
+    component_visual_recipe,
+)
 from services.compact_dsl_a2ui_converter import ComponentRow
 
 LAYOUT_CONTRACT_VERSION = "layout-contracts-v1"
@@ -123,7 +127,12 @@ def match_compact_layout(
         if not isinstance(patterns, list):
             continue
         for pattern in patterns:
-            mismatches = _pattern_mismatches(pattern, root, components_by_id)
+            mismatches = _pattern_mismatches(
+                pattern,
+                root,
+                components_by_id,
+                size=size,
+            )
             mismatches.extend(_action_count_mismatches(layout, components))
             if not mismatches:
                 return CompactLayoutMatch(layout_id=layout_id)
@@ -144,6 +153,8 @@ def _pattern_mismatches(
     pattern: Any,
     root: ComponentRow,
     components_by_id: dict[str, ComponentRow],
+    *,
+    size: str,
 ) -> list[str]:
     if not isinstance(pattern, dict):
         return ["pattern must be an object"]
@@ -152,7 +163,14 @@ def _pattern_mismatches(
         return ["pattern.rules must be an array"]
     mismatches: list[str] = []
     for rule in rules:
-        mismatches.extend(_rule_mismatches(rule, root, components_by_id))
+        mismatches.extend(
+            _rule_mismatches(
+                rule,
+                root,
+                components_by_id,
+                size=size,
+            )
+        )
     return mismatches
 
 
@@ -160,6 +178,8 @@ def _rule_mismatches(
     rule: Any,
     root: ComponentRow,
     components_by_id: dict[str, ComponentRow],
+    *,
+    size: str,
 ) -> list[str]:
     if not isinstance(rule, dict):
         return ["layout rule must be an object"]
@@ -184,6 +204,17 @@ def _rule_mismatches(
                 mismatches.append(
                     f"slot {path_label}.{name} must be {expected!r}, got {actual!r}"
                 )
+
+    slot_size = rule.get("slotSize")
+    if isinstance(slot_size, dict):
+        mismatches.extend(
+            _slot_size_mismatches(
+                component,
+                slot_size,
+                size=size,
+                path_label=path_label,
+            )
+        )
 
     child_count = len(component.children)
     expected_count = rule.get("childCount")
@@ -212,6 +243,56 @@ def _rule_mismatches(
         if event_count:
             mismatches.append(f"slot {path_label} subtree must not bind events")
     return mismatches
+
+
+def _slot_size_mismatches(
+    component: ComponentRow,
+    expected_size: dict[str, Any],
+    *,
+    size: str,
+    path_label: str,
+) -> list[str]:
+    recipe_styles = _component_root_styles(component, size=size)
+    mismatches: list[str] = []
+    for dimension in ("width", "height"):
+        expected = expected_size.get(dimension)
+        if not isinstance(expected, (int, float)):
+            continue
+        actual = component.props.get(dimension)
+        if actual is None and recipe_styles is not None:
+            actual = recipe_styles.get(dimension)
+        if actual == "matchParent" and dimension == "width":
+            actual = expected
+        if actual != expected:
+            mismatches.append(
+                f"slot {path_label}.{dimension} must resolve to {expected!r}, "
+                f"got {actual!r}"
+            )
+    return mismatches
+
+
+def _component_root_styles(
+    component: ComponentRow,
+    *,
+    size: str,
+) -> dict[str, Any] | None:
+    if component.component_type not in {"InfoBlock", "CardButton"}:
+        return None
+    try:
+        recipe = component_visual_recipe(component.component_type, size=size)
+    except CompactComponentRuntimeError:
+        return None
+    parts = recipe.get("parts")
+    if not isinstance(parts, dict):
+        return None
+    part_name = "root"
+    if component.component_type == "InfoBlock" and not component.props.get("icon"):
+        part_name = "rootNoVisual"
+    part = parts.get(part_name)
+    if not isinstance(part, dict):
+        return None
+    styles = part.get("styles")
+    return styles if isinstance(styles, dict) else None
 
 
 def _component_at_path(
@@ -334,3 +415,17 @@ def _validate_rule(layout_id: str, rule: Any) -> None:
         raise CompactLayoutRuntimeError(
             f"Layout {layout_id} has an invalid event policy."
         )
+    slot_size = rule.get("slotSize")
+    if slot_size is not None:
+        valid_slot_size = isinstance(slot_size, dict) and bool(slot_size)
+        if valid_slot_size:
+            for name, value in slot_size.items():
+                valid_name = name in {"width", "height"}
+                valid_value = isinstance(value, (int, float)) and value > 0
+                if not valid_name or not valid_value:
+                    valid_slot_size = False
+                    break
+        if not valid_slot_size:
+            raise CompactLayoutRuntimeError(
+                f"Layout {layout_id} has an invalid slot size."
+            )
