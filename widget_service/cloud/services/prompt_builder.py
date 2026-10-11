@@ -10,6 +10,12 @@ from models.generation import TaskSpec
 from services.compact_composition_context import (
     compact_composition_context,
     compact_plan_capacity_context,
+    composition_implementation_conflicts,
+    composition_recovery_context,
+)
+from services.compact_composition_planner import (
+    composition_text_width_conflicts,
+    feasible_composition_candidates,
 )
 from services.compact_fewshot_selection import select_plan_fewshots
 from services.compact_layout_runtime import allowed_layout_ids
@@ -39,8 +45,9 @@ _COUNTDOWN_DISPLAY_ROUTE_LOCK = """# 本次请求固定场景路由（最高优�
 拆成两个业务对象。两者在本场景中共同描述同一个倒计时目标。
 
 - 没有可见按钮、也没有额外展示数据时使用 `S-title-content`。
-- 固定视觉顺序：顶部使用左对齐的 SingleLineTitle 显示目标名称；下方 `content` 固定
-  `126×100vp`，使用 `justifyContent:"end"` 与 `alignItems:"start"`，让唯一主值组贴底。
+- 固定视觉顺序：顶部使用左对齐的 SingleLineTitle 显示目标名称；下方 `content` 使用
+  `width:"matchParent"`、`layoutWeight:1`，扣除当前标题 Recipe 与标题间距后承接剩余空间，
+  使用 `justifyContent:"end"` 与 `alignItems:"start"`，让唯一主值组贴底。
 - 主值使用左对齐的 `value_row`，横向放置 38fp 倒计时数字和紧邻的 12fp 单位“天”。
 - 顶部标题只能是活动、事件等倒计时目标名称；禁止使用日期或时间作为标题，
   无法提取目标名称时固定使用“倒计时”。
@@ -56,8 +63,9 @@ FEWSHOT_2x2 的 V25，使用标题主次内容单按钮结构，
 不得重新套用普通 S1/S2/S3/S4，也不得按 `/data/countdown`
 与 `/data/calendar` 拆成两个业务对象。两者共同描述同一个倒计时目标。
 
-- root 依次包含 `SingleLineTitle` 和 `126×100vp` body；body 内是 `126×56vp` content、
-  `8vp` 间距和沉底的 `126×36vp` action_area。
+- root 依次包含 `SingleLineTitle` 和自适应 body；body 与 content 使用
+  `width:"matchParent"`、`layoutWeight:1`，标题占用读取当前 Recipe，body 内扣除
+  `8vp` 间距和沉底的 `36vp` 高 action_area，剩余空间全部交给 content。
 - content 第一行必须是左对齐的 `value_row`，横向放置 30fp 倒计时数字和紧邻的
   12fp 单位“天”；第二行仅在用户确实要求时显示一条 12fp/400 补充事实。
   禁止把“天”和辅助时间拆成数字下方的两行，禁止生成第三行。
@@ -1120,9 +1128,9 @@ class PromptBuilder:
                 "本轮只有一个业务对象，只能在已保留的单业务语义布局中按字段关系选择；"
                 "不得生成 S-dual-info 或 S-quad-content。root 使用单业务安全区，全部内容围绕"
                 "userQuery 指定的第一焦点组织，动作与信息区域遵守所选骨架的容量。"
-                "带标题单动作有两套成组预算：标题间距6/body100/正文56，或"
-                "标题间距4/body102/正文58；三行18与两段2需要58，必须选后一套，"
-                "不能只增加正文却保留100高的body。两套都保留标题20、动作间距8、按钮36。"
+                "带标题单动作先扣除 SingleLineTitle 的12高和标题间距，再把剩余空间交给body；"
+                "body内继续扣除动作间距8和按钮36，剩余空间全部交给正文。标题间距默认6，"
+                "密集正文可用4；正文按真实行高闭合，不得继续使用旧的100/102高body预算。"
             )
 
         lock = _TWO_BY_FOUR_ROUTE_LOCKS.get(layout_scope)
@@ -1584,12 +1592,23 @@ class PromptBuilder:
         defer_compact_examples: bool = False,
     ) -> list[dict[str, str]]:
         """首次生成使用 PROMPT，编辑时叠加文件化多轮规则。"""
+        constructive_result = None
+        recovery = None
+        if source_format == DESIGN_COMPACT_PROFILE_ID and compact_plan is not None:
+            constructive_result = feasible_composition_candidates(
+                task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
+            )
+            recovery = composition_recovery_context(
+                task_spec.size, compact_plan, constructive_result,
+                task=task_spec.model_dump(mode="json"),
+            )
         effective_system_prompt = self._design_token_system_prompt(
             task_spec,
             system_prompt,
             source_format,
             compact_plan=compact_plan,
             include_examples=not defer_compact_examples,
+            constructive_result=constructive_result,
         )
         task_spec_value = task_spec.model_dump(
             mode="json",
@@ -1622,6 +1641,10 @@ class PromptBuilder:
                 ensure_ascii=False,
                 separators=(",", ":"),
             )
+        if recovery is not None:
+            user_payload = json.loads(user_content)
+            user_payload["compositionRecovery"] = recovery
+            user_content = json.dumps(user_payload, ensure_ascii=False, separators=(",", ":"))
         return [
             {"role": "system", "content": effective_system_prompt},
             {
@@ -1717,6 +1740,7 @@ class PromptBuilder:
         *,
         compact_plan: dict[str, Any] | None = None,
         include_examples: bool = True,
+        constructive_result: dict[str, Any] | None = None,
     ) -> str:
         if source_format != DESIGN_COMPACT_PROFILE_ID:
             return system_prompt
@@ -1724,9 +1748,15 @@ class PromptBuilder:
             system_prompt, task_spec, compact_plan, include_examples=include_examples,
         )
         if compact_plan is not None:
-            system_prompt = f"{system_prompt}\n\n{compact_plan_context(compact_plan)}"
+            conflicts = composition_implementation_conflicts(compact_plan)
+            conflicts.extend(composition_text_width_conflicts(
+                task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
+            ))
+            plan_context = compact_plan_context(compact_plan, implementation_conflicts=conflicts)
+            system_prompt = f"{system_prompt}\n\n{plan_context}"
             worksheet = compact_composition_context(
                 task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
+                constructive_result=constructive_result,
             )
             system_prompt = f"{system_prompt}\n\n{worksheet}"
         if fusion_ball_enabled(task_spec.appVersion):
@@ -1825,6 +1855,22 @@ class PromptBuilder:
         }
         if previous_failures is not None:
             payload["previousFailures"] = history
+        if dsl_format == DESIGN_COMPACT_PROFILE_ID:
+            try:
+                original_payload = json.loads(initial_prompt[1]["content"])
+            except json.JSONDecodeError:
+                # 兼容旧调用的纯文字输入；可选交接解析不能新增修复失败。
+                original_payload = None
+            recovery = None
+            if isinstance(original_payload, dict):
+                recovery = original_payload.get("compositionRecovery")
+            if isinstance(recovery, dict):
+                payload["compositionRecovery"] = copy.deepcopy(recovery)
+                payload["instruction"] += (
+                    "遇到布局或容量冲突，compositionRecovery 是完整重组的直接依据；"
+                    "保留事实动作和字号，落实整个变体与横纵合组，"
+                    "不要继续维持 invalidSourceDsl 的超预算子树。"
+                )
         user_content = json.dumps(
             payload,
             ensure_ascii=False,

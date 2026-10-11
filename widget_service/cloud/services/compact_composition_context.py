@@ -7,6 +7,11 @@ import re
 from typing import Any
 
 from services.compact_component_runtime import component_visual_recipe, load_visual_recipe_contract
+from services.compact_composition_planner import (
+    composition_structure_blueprint,
+    composition_text_width_conflicts,
+    feasible_composition_candidates,
+)
 from services.compact_layout_runtime import load_layout_contract
 from services.compact_reference_canvas import reference_dimension
 
@@ -19,7 +24,10 @@ _RULE_KEYS = (
 )
 
 
-def compact_composition_context(size: str, plan: dict[str, Any], task: dict[str, Any]) -> str:
+def compact_composition_context(
+    size: str, plan: dict[str, Any], task: dict[str, Any],
+    *, constructive_result: dict[str, Any] | None = None,
+) -> str:
     """提供当前合同的容量与责任清单；参考尺寸只用于核算，不写回产品宽高。"""
     facts = plan.get("info_required", [])
     if not isinstance(facts, list):
@@ -62,6 +70,10 @@ def compact_composition_context(size: str, plan: dict[str, Any], task: dict[str,
         "candidateRecipeParts": _recipe_geometry(size, names),
         "ordinaryFactPacking": _fact_packing(size, facts, task),
         "referenceContentBudgets": _content_budgets(size, layouts, len(actions)),
+        "constructiveCompositions": (
+            constructive_result if constructive_result is not None
+            else feasible_composition_candidates(size, plan, task)
+        ),
     }
     encoded = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     return (
@@ -81,6 +93,16 @@ def compact_composition_context(size: str, plan: dict[str, Any], task: dict[str,
         "数值字段和真实单位优先分别传 value 与 unit；已有格式化字符串保持完整，不拆单位。"
         "若某个横排子区装不下完整读数，不得裁切尾部；改合法分区比例或组件组合后重算宽高。"
         "无法容纳时先改合法组合或布局，不缩字、删事实、删操作或只调权重。"
+        "constructiveCompositions 是程序对完整事实/动作计算的替代组合："
+        "已有合法且预算闭合的 composition 优先保留，不为采用参考候选改写正常组合；"
+        "优先核对它的 layout/variant、各区 path、groups 的事实索引/可见属性和 rows 的横纵关系，"
+        "整区采用一个完整候选，不再逐字段补到旧的超预算树上。"
+        "参考行宽高只用于算式，输出区域用 matchParent/layoutWeight；"
+        "动作在所属区底部独立行或明确动作槽，不能与正文混成点击对象。"
+        "候选中标签、单位和进度范围的待核事项必须补齐核算，"
+        "不能把 minimumWidth 当作带未知标签/单位的完整宽度。"
+        "unresolved/no_candidate_found 只表示有限搜索未给出完整参考解，"
+        "保留全部事实，依完整合同继续重组，不作为删除信息或提前失败的理由。"
         "ordinaryFactPacking 给出完整事实的普通信息组合高度，不强迫把核心主值降为正文；"
         "普通时间、状态等没有真实强调要求时，不因 componentHints 首项就各做一个强调块。"
         "referenceContentBudgets 已扣除区域内边距，localReservations 才是扣标题与本地动作后的余额；"
@@ -92,6 +114,119 @@ def compact_composition_context(size: str, plan: dict[str, Any], task: dict[str,
         "本表只摘要已有合同，不授权新 Props；不要输出本表或任何额外协议字段。\n\n"
         f"```json\n{encoded}\n```"
     )
+
+
+def composition_implementation_conflicts(plan: dict[str, Any]) -> list[str]:
+    """识别软方案的明确冲突；父子分配同时核算，不新增发布校验。"""
+    composition = plan.get("composition")
+    if not isinstance(composition, dict):
+        notes = plan.get("compositionNotes", [])
+        return list(notes) if isinstance(notes, list) else []
+    layout = load_layout_contract().get("layouts", {}).get(composition.get("layout"), {})
+    patterns = layout.get("patterns", [])
+    variant = composition.get("variant")
+    if not isinstance(variant, int) or not 1 <= variant <= len(patterns):
+        return ["composition variant must be rebuilt from the current contract"]
+    rules = patterns[variant - 1].get("rules", [])
+    directions = {}
+    for rule in rules:
+        types = rule.get("types", [])
+        directions[tuple(rule.get("path", []))] = types[0] if types else None
+    regions = {}
+    conflicts: list[str] = []
+    for region in composition.get("regions", []):
+        path = tuple(region.get("path", []))
+        if path in regions:
+            conflicts.append(f"duplicate region assignment at {list(path)}")
+        regions[path] = region
+    occupied: dict[tuple[int, ...], float] = {}
+    for path in sorted(regions, key=len, reverse=True):
+        region = regions.get(path)
+        own_height = region.get("requiredHeight")
+        capacity = region.get("referenceHeight")
+        if not isinstance(own_height, (int, float)) or not isinstance(capacity, (int, float)):
+            continue
+        children = []
+        for child_path, child_height in occupied.items():
+            if len(child_path) <= len(path) or child_path[:len(path)] != path:
+                continue
+            intermediate = False
+            for other in regions:
+                if len(path) < len(other) < len(child_path):
+                    if other[:len(path)] == path and child_path[:len(other)] == other:
+                        intermediate = True
+                        break
+            if not intermediate:
+                children.append(child_height)
+        total = own_height
+        if children and directions.get(path) == "Column":
+            gap = region.get("gap", 0)
+            extra_gaps = len(children) if region.get("groups") else len(children) - 1
+            total += sum(children) + gap * max(0, extra_gaps)
+        elif children:
+            total = max(total, max(children))
+        occupied[path] = total
+        if total > capacity:
+            conflicts.append(
+                f"region {list(path)} including nested assignments requires {total:g}vp "
+                f"within {capacity:g}vp; old grouping is not executable"
+            )
+    return conflicts
+
+
+def composition_recovery_context(
+    size: str, plan: dict[str, Any], constructive_result: dict[str, Any],
+    *, task: dict[str, Any] | None = None,
+) -> dict[str, Any] | None:
+    """把冲突软方案的完整替代落点交给生成，不改硬事实或已闭合方案。"""
+    conflicts = composition_implementation_conflicts(plan)
+    if task is not None:
+        conflicts.extend(composition_text_width_conflicts(size, plan, task))
+    if not conflicts:
+        return None
+    candidates = constructive_result.get("candidates", [])
+    result: dict[str, Any] = {
+        "status": "recompose_conflicting_plan",
+        "conflicts": conflicts,
+        "instruction": (
+            "旧 composition 是不可执行的诊断，不是必须照抄的结构。"
+            "保留全部 info_required 及真实动作、主值字号，整体落实下列一个完整组合的"
+            "布局变体、path、directChildren 包装和 rows 横纵关系；不要给旧超高树调权重。"
+            "不得额外叠加候选未预留的装饰标题；必要标题事实仍按指定组件显示。"
+            "referenceWidth/Height 只用于核算，区域用 matchParent/layoutWeight，"
+            "横排行宽比例转成 layoutWeight，不写死区域宽高；固定设计量不变。"
+            "核对标签、单位、进度范围和动作完整名称；若完整文字不满足预算，"
+            "可改用另一个完整合法组合并复算，不能缩字、删信息或截断。"
+            "structureBlueprint 明确完整父子节点、直属 children 和组件合组，"
+            "按引用构建一棵树，不能把 Row 子组另拆成多行或省略前景包装。"
+            "单列能放下时不要改回窄双列；未知标签仍需核算。"
+            "groupParameters 是组合说明而非可照抄的全部 Props，"
+            "事实索引需转换成真实绑定，字段合同单位需解析成合法 unit；"
+            "不得把索引、预算、样值等参考字段输出到 DSL。"
+            "横排各子节点落实 suggestedLayoutProps 中的 matchParent/归一化权重，"
+            "不能让自然宽度的表达式挤占相邻事实。displayBudget 核算的是原值；"
+            "最终前缀、标签和单位也必须在原字号下占预算，不能越过 additionalTextWidth。"
+            "若必要上下文放不下，可移入已预留且没有硬标题绑定的标题位，"
+            "或换完整合法组合；不删必要语义，不替换必需标题。"
+            "保留参考组 role 与原 Recipe 字号，不能为闭合改成较小 metadata。"
+        ),
+    }
+    if candidates:
+        selected = copy.deepcopy(candidates[0])
+        for region in selected.get("regions", []):
+            for group in region.get("groups", []):
+                group.pop("pressureOnly", None)
+        result["referenceComposition"] = selected
+        result["structureBlueprint"] = composition_structure_blueprint(size, selected)
+        alternatives = _layout_geometry(size, None).get(selected.get("layout"), [])
+        variant = selected.get("variant")
+        if isinstance(variant, int) and 1 <= variant <= len(alternatives):
+            result["completeLayoutRules"] = alternatives[variant - 1]
+    else:
+        result["searchStatus"] = constructive_result.get("status")
+        result["unresolved"] = constructive_result.get("unresolved", [])
+        result["instruction"] += "有限搜索未给出完整解，仍应按当前合同重新合组，不提前失败。"
+    return result
 
 
 def compact_plan_capacity_context(size: str) -> str:
