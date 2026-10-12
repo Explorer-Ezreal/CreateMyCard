@@ -46,7 +46,7 @@
 | 比较 | `H_BarChart` | 2–3 组标签、值和横向柱 | 比较多个对象的同一指标 | 不比较不同量纲 |
 | 环形进度 | `ProgressCircleSingle` | 单环 + 右侧读数组 | 单个真实比例及同对象说明 | 两种尺寸共用；规格由尺寸文件决定 |
 | 占比摘要 | `NumericRatioStack` | 三组图标 + 数值 + 单位 | 三个同级对象的紧凑占比 | 必须恰好三项且图标可区分 |
-| 日程 | `EventCard` | 时间线 + 1–2 个事件 | 两种尺寸的连续日程内容 | 两项按时间排序并放在同一实例 |
+| 日程 | `EventCard` | 时间线 + 一个或多个事件 | 两种尺寸的连续日程内容 | 全部事件按时间排序并放在同一实例，按实际总高验算容量 |
 | 操作 | `PillButton` | 操作文案 + 可选图标 | 两种尺寸内容区内的直属操作 | 一个实例绑定一个真实动作 |
 | 操作 | `CircleButton` | 纯图标操作 | 2x2 右下锚点操作 | 2x2 专属；合同见 `components/2x2.md` |
 | 等权指标 | `TopTextBottomValue` | 三组标签—数值—单位 | 2x4 三个同级指标 | 2x4 专属；合同见 `components/2x4.md` |
@@ -60,7 +60,7 @@
 3. 有唯一核心值时使用一个强调或进度组件；没有真实主次时保持并列，不把普通数字强行放大为核心。
 4. 文本核心结论使用 `EmphasisText`，短补充项使用 `SecondaryBody`；稳定标签—值使用 `TableText`。2x4 横向详情选择 `TextBlock` 或 `TopTextBottomValue`。
 5. 单占比使用 `ProgressCircleSingle`；两个或四个同级占比使用多个 `ProgressCircle`；三个图标可区分的同级占比使用 `NumericRatioStack`；明确目标差距使用 `ProgressLine2`；2–3 个对象同指标比较使用 `H_BarChart`。
-6. 一至两个按时间排列的事件使用一个 `EventCard`；普通时间属性使用 `SecondaryBody role="metadata"`。同一事实只展示一次。
+6. 一个或多个按时间排列的事件使用一个 `EventCard`；普通时间属性使用 `SecondaryBody role="metadata"`。同一事实只展示一次，事件数量不设固定上限但必须通过实际容量预算。
 7. 动作按槽位选择 `PillButton`、`CircleButton` 或 `CardButton`，只能绑定当前事件候选，不伪造操作。
 8. 模型只输出总表及尺寸文件登记的语义组件；`Text` 仅由转换器展开为 A2UI 基础节点。
 9. 每个组件只使用自身属性表声明的 Props 与绑定能力；选型、容量和槽位以对应组件合同为准。
@@ -83,7 +83,8 @@
 - 布局组件只能使用各自章节列出的字段。使用视觉 Recipe 的组件只能使用自身属性表，
   并可额外使用 `width`、`height`、`layoutWeight`、`flexShrink`、`margin` 调整组件根的外部布局。
 - `PillButton` 不使用上述 `width` 例外；其宽度固定由所在动作槽和 Recipe 撑满。
-- 视觉 Recipe 组件不接受 `padding`、圆角、字号、内部间距或对齐覆盖；内部结构、子节点 ID 和样式由转换器确定。
+- 视觉 Recipe 组件不接受 `padding`、圆角、内部间距或对齐覆盖；本文件标有 `fontSize` 的文本组件在新生成时
+  必须显式写出固定主字号，帮助布局预算，但该值必须等于 Recipe，不是可调样式。内部次级字号、结构和样式仍由转换器确定。
 - 组件不声明文字颜色；转换器根据 root 背景解析主色、辅助色等语义色板角色，并按组件 Recipe 注入。
   自定义背景同样由运行时选择具有足够对比度的文字角色，不在组件 Props 中重复指定颜色。
 - 显示值按属性表使用静态值、完整 Expression 或 PathBinding；颜色和布局样式必须是静态合法值。
@@ -133,6 +134,7 @@
 | Prop | 类型 | 绑定能力 | 要求 |
 |---|---|---|---|
 | `title` | 显示值 | 静态 / Expression / PathBinding | 必填；非空单行标题 |
+| `fontSize` | number | 仅静态 | 新生成必填；固定 `12`，不允许修改 |
 
 #### 槽位与容量
 
@@ -142,12 +144,12 @@
 #### 示例
 
 ```genui
-["header","SingleLineTitle",{"title":"天气"}]
+["header","SingleLineTitle",{"title":"天气","fontSize":12}]
 ```
 
 #### 注意事项
 
-标题固定左对齐 `12fp/400`，只承载标题文字；不覆盖内部 padding、字号或字重。
+标题固定左对齐 `12fp/400`，只承载标题文字；`fontSize:12` 只声明固定主字号，不覆盖 Recipe。
 
 ### 4.2 `DoubleLineTitle`
 
@@ -162,6 +164,7 @@
 |---|---|---|---|
 | `title` | 显示值 | 静态 / Expression / PathBinding | 必填；最多一行 |
 | `secondaryInfo` | 显示值 | 静态 / Expression / PathBinding | 必填；最多两行 |
+| `fontSize` | number | 仅静态 | 新生成必填；主标题和次信息均固定 `12` |
 
 #### 槽位与容量
 
@@ -169,7 +172,7 @@
 单行标题或更宽内容区。
 
 ```genui
-["device_title","DoubleLineTitle",{"title":{"path":"/data/sensor/displayName"},"secondaryInfo":{"path":"/data/sensor/connectionStatus"}}]
+["device_title","DoubleLineTitle",{"title":{"path":"/data/sensor/displayName"},"secondaryInfo":{"path":"/data/sensor/connectionStatus"},"fontSize":12}]
 ```
 
 ### 4.3 `Badge`
@@ -198,7 +201,10 @@
 
 #### 选择条件
 
-用于一个内容区中唯一需要突出的核心数值或完整格式化数值。多个同级指标和普通文本结论不使用。
+用于一个内容区中唯一需要突出的核心数值或单一测量读数。多个同级指标和普通文本结论不使用。
+完整多段时长（如“7小时1分”）包含多个数量与单位，属于文本读数：作为主信息使用
+`EmphasisText.mainText` 的固定18fp规格，作为辅助信息使用原正文角色，不把整串放入30fp的value。
+保留完整原绑定，不截取样例数字、不伪造分段字段、不重复或删除单位。纯数字主值规格不变。
 
 #### 组件属性
 
@@ -206,6 +212,7 @@
 |---|---|---|---|
 | `value` | 显示值 | 静态 / Expression / PathBinding | 必填；一个核心值 |
 | `unit` | string | 静态 / Expression / string PathBinding | 可选；只绑定或填写单位文本 |
+| `fontSize` | number | 仅静态 | 新生成必填；核心值固定 `30`；单位仍由 Recipe 固定为 `12` |
 
 #### 槽位与容量
 
@@ -214,7 +221,7 @@
 #### 示例
 
 ```genui
-["reading","EmphasizedData",{"value":{"path":"/data/healthSport/sleepScore"},"unit":"分"}]
+["reading","EmphasizedData",{"value":{"path":"/data/healthSport/sleepScore"},"unit":"分","fontSize":30}]
 ```
 
 #### 注意事项
@@ -234,9 +241,10 @@
 |---|---|---|---|
 | `mainText` | 显示值 | 静态 / Expression / PathBinding | 必填；核心文本 |
 | `secondaryText` | 显示值 | 静态 / Expression / PathBinding | 可选；同一语义的一条短补充 |
+| `fontSize` | number | 仅静态 | 新生成必填；主文本固定 `18`；次文本仍由 Recipe 固定为 `12` |
 
 ```genui
-["connection","EmphasisText",{"mainText":{"path":"/data/earphone/connectionStatus"},"secondaryText":{"path":"/data/earphone/name"}}]
+["connection","EmphasisText",{"mainText":{"path":"/data/earphone/connectionStatus"},"secondaryText":{"path":"/data/earphone/name"},"fontSize":18}]
 ```
 
 ### 4.6 `SecondaryBody`
@@ -257,6 +265,7 @@ metadata；多个短字段使用 supporting。稳定标签—值表使用 `Table
 | `role` | string | 仅静态 | 单项必填；`body|metadata|supporting`；多项新生成也应显式填写 |
 | `columns` | number | 仅静态 | 可选；`1|2`，缺省 2；长说明使用 1，让每项占完整行宽 |
 | `separator` | string | 仅静态 | 可选；默认 ` ｜ ` |
+| `fontSize` | number | 仅静态 | 新生成必填；body 和 1–2 项 supporting 固定 `14`；metadata 和 3–4 项 supporting 固定 `12` |
 
 `role:"body"` 恰好一项，不写 label；`role:"metadata"` 恰好一项；各角色每项 `maxLines` 可为 `1|2`。
 `role:"supporting"` 支持 1–4 项；`columns:1` 每项独占一行，`columns:2` 每行最多两项。
@@ -265,13 +274,13 @@ metadata；多个短字段使用 supporting。稳定标签—值表使用 `Table
 每行高度取该行最大 maxLines × 行高，行间距2。两行不是免费空间，必须计入正文预算。
 长时间戳、地点、时长和带完整单位的值，不默认塞进双列单行；选择单列或两行仍不够时重排布局。
 为兼容旧 DSL，
-2–4 项省略 role 时按 supporting 处理；新生成必须显式填写 role。完整显示值保留原样，不拆单位，也不开放
-字号、字重、padding 或内部对齐等任意样式属性。
+2–4 项省略 role 时按 supporting 处理；新生成必须显式填写 role。完整显示值保留原样，不拆单位；`fontSize`
+只复述当前角色的固定 Recipe 字号，不开放字号、字重、padding 或内部对齐等任意覆盖。
 
 ```genui
-["description","SecondaryBody",{"role":"body","items":[{"value":{"path":"/data/weather/description"},"maxLines":2}]}]
-["updated","SecondaryBody",{"role":"metadata","items":[{"value":"{{ '更新 ' + ${/data/weather/updatedAt} }}","maxLines":2}]}]
-["sleep_detail","SecondaryBody",{"role":"supporting","columns":1,"items":[{"label":"夜间睡眠 ","value":{"path":"/data/healthSport/nightSleepDurationText"},"maxLines":2},{"label":"午睡 ","value":{"path":"/data/healthSport/napDurationText"}}]}]
+["description","SecondaryBody",{"role":"body","items":[{"value":{"path":"/data/weather/description"},"maxLines":2}],"fontSize":14}]
+["updated","SecondaryBody",{"role":"metadata","items":[{"value":"{{ '更新 ' + ${/data/weather/updatedAt} }}","maxLines":2}],"fontSize":12}]
+["sleep_detail","SecondaryBody",{"role":"supporting","columns":1,"items":[{"label":"夜间睡眠 ","value":{"path":"/data/healthSport/nightSleepDurationText"},"maxLines":2},{"label":"午睡 ","value":{"path":"/data/healthSport/napDurationText"}}],"fontSize":14}]
 ```
 
 ### 4.7 `DataDisplay`
@@ -287,6 +296,7 @@ metadata；多个短字段使用 supporting。稳定标签—值表使用 `Table
 | `label` | string | 仅静态 | 必填；非空短文本 |
 | `value` | 显示值 | 静态 / Expression / PathBinding | 必填；唯一核心值 |
 | `supportingText` | string | 仅静态 | 必填；单位或短说明 |
+| `fontSize` | number | 仅静态 | 新生成必填；核心值固定 `56`；标签和支撑文本仍由 Recipe 固定为 `12/14` |
 
 #### 槽位与容量
 
@@ -295,7 +305,7 @@ metadata；多个短字段使用 supporting。稳定标签—值表使用 `Table
 #### 示例
 
 ```genui
-["display","DataDisplay",{"label":"运动会倒计时","value":{"path":"/data/countdown/countdownDays"},"supportingText":"天"}]
+["display","DataDisplay",{"label":"运动会倒计时","value":{"path":"/data/countdown/countdownDays"},"supportingText":"天","fontSize":56}]
 ```
 
 #### 注意事项
@@ -351,6 +361,7 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 | `items` | Array | 数组结构仅静态 | 必填；2–3 项，每项只含 `label`、`value` |
 | `items[].label` | 显示值 | 静态 / Expression / PathBinding | 必填；非空标签 |
 | `items[].value` | 显示值 | 静态 / Expression / PathBinding | 必填；真实可见值 |
+| `fontSize` | number | 仅静态 | 新生成必填；两项固定 `12`，三项固定 `10` |
 
 #### 槽位与容量
 
@@ -361,7 +372,7 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 #### 示例
 
 ```genui
-["metrics","TableText",{"items":[{"label":"紫外线","value":{"path":"/data/weatherHealth/ultravioletLevel"}},{"label":"空气质量","value":{"path":"/data/weatherHealth/airQualityLevel"}}]}]
+["metrics","TableText",{"items":[{"label":"紫外线","value":{"path":"/data/weatherHealth/ultravioletLevel"}},{"label":"空气质量","value":{"path":"/data/weatherHealth/airQualityLevel"}}],"fontSize":12}]
 ```
 
 #### 注意事项
@@ -412,7 +423,7 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 
 | Prop | 类型 | 绑定能力 | 要求 |
 |---|---|---|---|
-| `externalText` | number / string / PathBinding | 静态 / PathBinding；不接受 Expression | 必填；`0–100` 数值、纯数值字符串或完整百分比字符串；绑定字段样例也须满足该格式 |
+| `externalText` | number / string / Expression / PathBinding | 静态 / Expression / PathBinding | 必填；`0–100` 数值、纯数值字符串、完整百分比字符串，或结果为 `0–100` 数值的完整 Expression；需要环外百分号时可让 Expression 以 `+ '%'` 或 `+ '％'` 结尾 |
 | `icon` | string | 仅静态 | 必填；逐字使用当前素材候选路径 |
 | `accessibility` | object | 仅静态 | 必填；包含非空 `label`，可选 `description` |
 | `width`、`height` | number | 仅静态 | 必填；按当前槽位填写正数 vp |
@@ -432,7 +443,9 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 
 #### 注意事项
 
-`externalText` 同时驱动圆环和环外读数；不传 `value`、`total`、`type`、`strokeWidth`、`size` 或 children。
+`externalText` 同时驱动圆环和环外读数。Expression 以 `+ '%'` 或 `+ '％'` 结尾时，转换器确定性拆出前面的
+数值表达式驱动圆环，并保留原表达式作为环外读数；其它 Expression 必须直接返回 `0–100` 数值，环外读数由
+转换器追加 `%`。不传 `value`、`total`、`type`、`strokeWidth`、`size` 或 children。
 
 ### 5.2 `ProgressLine2`
 
@@ -547,22 +560,24 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 
 #### 选择条件
 
-用于 1–2 个按时间排列、各自具有标题和时间的事件，可带地点。一张卡最多生成一个 `EventCard`；两项必须
+用于一个或多个按时间排列、各自具有标题和时间的事件，可带地点。一张卡最多生成一个 `EventCard`；多项必须
 放在同一个实例中并按时间排序。普通时间属性不使用，也不把事件拆成普通文本绕过容量。
 
 #### 组件属性
 
 | Prop | 类型 | 绑定能力 | 要求 |
 |---|---|---|---|
-| `items` | Array | 数组结构仅静态 | 必填；1–2 项 |
+| `items` | Array | 数组结构仅静态 | 必填；至少一项；不设固定数量上限，按实际展开高度校验容量 |
 | `items[].title` | 显示值 | 静态 / Expression / PathBinding | 必填；事件标题 |
 | `items[].time` | 显示值 | 静态 / Expression / PathBinding | 必填；事件时间 |
 | `items[].location` | 显示值 | 静态 / Expression / PathBinding | 可选；事件地点 |
-| `density` | `compact` | 仅静态 | 可选；两项普通高度放不下时使用 |
+| `density` | `compact` | 仅静态 | 可选；多项普通高度放不下时使用 |
 
 #### 槽位与容量
 
-两种尺寸共用，进入尺寸文件允许的连续内容槽；一个组件承载 1–2 个事件，所属动作放在独立操作组件中。
+两种尺寸共用，进入尺寸文件允许的连续内容槽；一个组件承载全部同组事件，所属动作放在独立操作组件中。
+多项普通模式总高为各项实际高度之和加 `8vp × (items 数量 - 1)`；compact 总高为
+`32vp × items 数量 + 8vp × (items 数量 - 1)`。数量放开不豁免父槽与整卡容量校验。
 
 #### 示例
 

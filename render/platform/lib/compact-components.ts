@@ -214,6 +214,23 @@ function requireProps(
   if (unknown.length) throw new Error(`${id}: ${type} 不接受 ${unknown.join("、")}。`);
 }
 
+function requireRecipeFontSize(
+  id: string,
+  type: string,
+  props: RecordValue,
+  size: CardSize,
+  part: string,
+  variant?: string,
+) {
+  if (props.fontSize === undefined) return;
+  const expected = visualRecipePart(type, part, size, variant).styles.fontSize;
+  if (typeof props.fontSize !== "number"
+    || !Number.isFinite(props.fontSize)
+    || props.fontSize !== expected) {
+    throw new Error(`${id}: ${type}.fontSize 必须使用固定 Recipe 值 ${String(expected)}。`);
+  }
+}
+
 function requireNoChildren(id: string, type: string, children: string[]) {
   if (children.length) throw new Error(`${id}: ${type} 不接受 children。`);
 }
@@ -368,8 +385,25 @@ function progressCircleValues(
       ? [progress, clone(value)]
       : [progress, `{{ \${${value.path}} + '%' }}`];
   }
+  if (completeExpression(value)) return progressCircleExpressionValues(value);
   const numeric = normalizedProgressValue(id, "ProgressCircle", "externalText", value, 100);
   return typeof value === "string" ? [numeric, value.trim()] : [numeric, `${numeric}%`];
+}
+
+function completeExpression(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const stripped = value.trim();
+  return stripped.startsWith("{{")
+    && stripped.endsWith("}}")
+    && stripped.slice(2, -2).trim().length > 0;
+}
+
+function progressCircleExpressionValues(value: string): [string, string] {
+  const stripped = value.trim();
+  const body = stripped.slice(2, -2).trim();
+  const percentage = body.match(/^([\s\S]+?)\s*\+\s*(['"])[%％]\2\s*$/);
+  if (percentage) return [`{{ ${percentage[1].trim()} }}`, stripped];
+  return [stripped, `{{ (${body}) + '%' }}`];
 }
 
 function requireProgressCircleAccessibility(id: string, value: unknown) {
@@ -398,8 +432,9 @@ function expandHighLevel(
   requireNoChildren(id, type, node.children);
 
   if (type === "DoubleLineTitle") {
-    const allowed = ["title", "secondaryInfo", "fontColor"];
-    requireProps(id, type, p, allowed, allowed);
+    const allowed = ["title", "secondaryInfo", "fontColor", "fontSize"];
+    requireProps(id, type, p, ["title", "secondaryInfo", "fontColor"], allowed);
+    requireRecipeFontSize(id, type, p, size, "title");
     requireDisplay(id, type, p, "title");
     requireDisplay(id, type, p, "secondaryInfo");
     requireColor(id, type, p, "fontColor");
@@ -429,8 +464,9 @@ function expandHighLevel(
   }
 
   if (type === "EmphasisText") {
-    const allowed = ["mainText", "secondaryText", "fontColor"];
+    const allowed = ["mainText", "secondaryText", "fontColor", "fontSize"];
     requireProps(id, type, p, ["mainText", "fontColor"], allowed);
+    requireRecipeFontSize(id, type, p, size, "main");
     requireDisplay(id, type, p, "mainText");
     if (p.secondaryText !== undefined) requireDisplay(id, type, p, "secondaryText");
     requireColor(id, type, p, "fontColor");
@@ -451,7 +487,7 @@ function expandHighLevel(
   }
 
   if (type === "SecondaryBody") {
-    const allowed = ["items", "role", "columns", "separator", "fontColor"];
+    const allowed = ["items", "role", "columns", "separator", "fontColor", "fontSize"];
     requireProps(id, type, p, ["items", "fontColor"], allowed);
     requireColor(id, type, p, "fontColor");
     if (!Array.isArray(p.items) || p.items.length < 1 || p.items.length > 4) {
@@ -492,6 +528,7 @@ function expandHighLevel(
     if (role === "body") variant = items[0].maxLines === 2 ? "bodyMultiline" : "body";
     else if (role === "metadata") variant = "metadata";
     else if (items.length > 2) variant = "multiline";
+    requireRecipeFontSize(id, type, p, size, "text", variant);
     const textStyles = recipe(type, size, variant).parts.text.styles;
     const lineHeight = Number(textStyles.height) / Number(textStyles.maxLines ?? 1);
     const rootChildren: string[] = [];
@@ -826,7 +863,14 @@ function expandHighLevel(
   }
 
   if (type === "EmphasizedData") {
-    requireProps(id, type, p, ["value", "fontColor"], ["value", "unit", "fontColor"]);
+    requireProps(
+      id,
+      type,
+      p,
+      ["value", "fontColor"],
+      ["value", "unit", "fontColor", "fontSize"],
+    );
+    requireRecipeFontSize(id, type, p, size, "value");
     requireDisplay(id, type, p, "value");
     requireColor(id, type, p, "fontColor");
     if (p.unit !== undefined && (typeof p.unit !== "string" || !p.unit.trim())) {
@@ -1045,10 +1089,12 @@ function expandHighLevel(
       throw new Error("TextBlock 仅支持 2x4 卡片。");
     }
     const required = ["items", "fontColor"];
-    requireProps(id, type, p, required, required);
+    const allowed = isTable ? [...required, "fontSize"] : required;
+    requireProps(id, type, p, required, allowed);
     requireColor(id, type, p, "fontColor");
     const items = labelValueItems(id, type, p.items, 2, isTable ? 3 : 4);
     const variant = isTable && items.length === 3 ? "compact" : undefined;
+    if (isTable) requireRecipeFontSize(id, type, p, size, "value", variant);
     const children: string[] = [];
     const rows: Array<[string, MiniNode]> = [];
     items.forEach((item, index) => {
@@ -1261,8 +1307,8 @@ function expandHighLevel(
     else if (p.title !== undefined && p.time !== undefined) {
       items = [{ title: p.title, time: p.time, ...(p.location === undefined ? {} : { location: p.location }) }];
     } else throw new Error(`${id}: EventCard 需要 items 或 title/time。`);
-    if (items.length < 1 || items.length > 2) {
-      throw new Error(`${id}: EventCard.items 需要 1–2 项。`);
+    if (items.length < 1) {
+      throw new Error(`${id}: EventCard.items 至少需要 1 项。`);
     }
     items.forEach((item, index) => {
       const valid = record(item) && isDisplayValue(item.title) && isDisplayValue(item.time)
@@ -1341,14 +1387,15 @@ function expandHighLevel(
       }
     });
     if (items.length === 1) return rows;
-    totalHeight += 8;
+    totalHeight += 8 * (items.length - 1);
     return [row(id, type, "multiRoot", size, { height: totalHeight }, itemIds), ...rows];
   }
 
   if (type === "DataDisplay") {
     if (size !== "2x2") throw new Error("DataDisplay 仅支持 2x2 卡片。");
-    const allowed = ["label", "value", "supportingText", "fontColor"];
-    requireProps(id, type, p, allowed, allowed);
+    const allowed = ["label", "value", "supportingText", "fontColor", "fontSize"];
+    requireProps(id, type, p, ["label", "value", "supportingText", "fontColor"], allowed);
+    requireRecipeFontSize(id, type, p, size, "value");
     if (typeof p.label !== "string" || !p.label.trim()
       || typeof p.supportingText !== "string" || !p.supportingText.trim()) {
       throw new Error(`${id}: DataDisplay.label/supportingText 必须是非空文本。`);
@@ -1535,7 +1582,7 @@ export function expandCompactComponents(
     if (!["SingleLineTitle", "TimelineUnit"].includes(node.type)) continue;
     requireNoChildren(id, node.type, node.children);
     if (node.type === "SingleLineTitle") {
-      const allowed = ["title", "fontColor"];
+      const allowed = ["title", "fontColor", "fontSize"];
       const invalid = Object.keys(p).some(key => !allowed.includes(key) && !PLACEMENT_PROPS.includes(key))
         || p.title == null
         || typeof p.fontColor !== "string"
@@ -1543,6 +1590,7 @@ export function expandCompactComponents(
       if (invalid) {
         throw new Error("SingleLineTitle 只接受 title 和合法布局属性；文字色由运行时注入。");
       }
+      requireRecipeFontSize(id, node.type, p, size, "title");
       const rootVisual = visualRecipePart("SingleLineTitle", "root", size);
       const titleVisual = visualRecipePart("SingleLineTitle", "title", size);
       const children = [`${id}_title`];

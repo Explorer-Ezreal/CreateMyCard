@@ -12,6 +12,9 @@ from services.compact_composition_context import (
     compact_plan_capacity_context,
     composition_implementation_conflicts,
     composition_recovery_context,
+    repair_action_labels,
+    repair_display_roles,
+    repair_display_samples,
 )
 from services.compact_composition_planner import (
     composition_text_width_conflicts,
@@ -1564,7 +1567,8 @@ class PromptBuilder:
             + "、".join(paths)
             + " 均为带单位字符串，展示时完整绑定，不重复追加%，不能从样例提取数字写死进度。"
             "仅当字段具有真实比例语义且值为完整数值百分比时，才可按组件合同用 PathBinding"
-            "驱动进度，由转换器换算内部数值；不能用 Expression 驱动进度，也不能借用其它对象指标。"
+            "驱动进度，由转换器换算内部数值；ProgressCircle.externalText 也可使用以数值表达式"
+            "或数值表达式加百分号结尾的完整 Expression，不能借用其它对象指标。"
         )
 
     def build_design_compact(
@@ -1594,14 +1598,24 @@ class PromptBuilder:
         """首次生成使用 PROMPT，编辑时叠加文件化多轮规则。"""
         constructive_result = None
         recovery = None
-        if source_format == DESIGN_COMPACT_PROFILE_ID and compact_plan is not None:
-            constructive_result = feasible_composition_candidates(
-                task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
-            )
-            recovery = composition_recovery_context(
-                task_spec.size, compact_plan, constructive_result,
-                task=task_spec.model_dump(mode="json"),
-            )
+        runtime_prompt_context_enabled = (
+            source_format == DESIGN_COMPACT_PROFILE_ID
+            and compact_plan is not None
+            and get_settings().enable_design_compact_runtime_prompt_context
+        )
+        if runtime_prompt_context_enabled:
+            task_value = task_spec.model_dump(mode="json")
+            conflicts = composition_implementation_conflicts(compact_plan)
+            conflicts.extend(composition_text_width_conflicts(
+                task_spec.size, compact_plan, task_value,
+            ))
+            if conflicts:
+                constructive_result = feasible_composition_candidates(
+                    task_spec.size, compact_plan, task_value,
+                )
+                recovery = composition_recovery_context(
+                    task_spec.size, compact_plan, constructive_result, task=task_value,
+                )
         effective_system_prompt = self._design_token_system_prompt(
             task_spec,
             system_prompt,
@@ -1609,6 +1623,7 @@ class PromptBuilder:
             compact_plan=compact_plan,
             include_examples=not defer_compact_examples,
             constructive_result=constructive_result,
+            execution_selected=compact_plan is not None,
         )
         task_spec_value = task_spec.model_dump(
             mode="json",
@@ -1667,8 +1682,11 @@ class PromptBuilder:
         )
         tool = build_compact_plan_tool(task_spec_value)
         tool_payload = json.dumps(tool, ensure_ascii=False, separators=(",", ":"))
+        capacity_context = ""
+        if get_settings().enable_design_compact_runtime_prompt_context:
+            capacity_context = f"\n\n{compact_plan_capacity_context(task_spec.size)}"
         effective_system_prompt = (
-            f"{system_prompt}\n\n{compact_plan_capacity_context(task_spec.size)}\n\n"
+            f"{system_prompt}{capacity_context}\n\n"
             f"# 可用工具合同\n\n{tool_payload}\n\n"
             "只输出一个 JSON 工具调用包："
             '{"name":"submit_card_plan","arguments":{...}}。'
@@ -1741,6 +1759,7 @@ class PromptBuilder:
         compact_plan: dict[str, Any] | None = None,
         include_examples: bool = True,
         constructive_result: dict[str, Any] | None = None,
+        execution_selected: bool = False,
     ) -> str:
         if source_format != DESIGN_COMPACT_PROFILE_ID:
             return system_prompt
@@ -1748,17 +1767,25 @@ class PromptBuilder:
             system_prompt, task_spec, compact_plan, include_examples=include_examples,
         )
         if compact_plan is not None:
-            conflicts = composition_implementation_conflicts(compact_plan)
-            conflicts.extend(composition_text_width_conflicts(
-                task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
-            ))
-            plan_context = compact_plan_context(compact_plan, implementation_conflicts=conflicts)
-            system_prompt = f"{system_prompt}\n\n{plan_context}"
-            worksheet = compact_composition_context(
-                task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
-                constructive_result=constructive_result,
+            runtime_prompt_context_enabled = (
+                get_settings().enable_design_compact_runtime_prompt_context
             )
-            system_prompt = f"{system_prompt}\n\n{worksheet}"
+            conflicts = composition_implementation_conflicts(compact_plan)
+            if runtime_prompt_context_enabled:
+                conflicts.extend(composition_text_width_conflicts(
+                    task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
+                ))
+            plan_context = compact_plan_context(
+                compact_plan, implementation_conflicts=conflicts,
+                execution_selected=execution_selected,
+            )
+            system_prompt = f"{system_prompt}\n\n{plan_context}"
+            if runtime_prompt_context_enabled:
+                worksheet = compact_composition_context(
+                    task_spec.size, compact_plan, task_spec.model_dump(mode="json"),
+                    constructive_result=constructive_result,
+                )
+                system_prompt = f"{system_prompt}\n\n{worksheet}"
         if fusion_ball_enabled(task_spec.appVersion):
             recommendation = PromptBuilder._fusion_ball_recommendation(task_spec)
             if recommendation:
@@ -1834,6 +1861,9 @@ class PromptBuilder:
         *,
         dsl_format: str = "a2ui-form",
         previous_failures: list[list[dict[str, Any]]] | None = None,
+        task_spec: TaskSpec | None = None,
+        compact_plan: dict[str, Any] | None = None,
+        repair_strategy: dict[str, Any] | None = None,
     ) -> list[dict[str, str]]:
         """基于首次提示词构造携带源 DSL 和结构化质量问题的修复请求。"""
         if len(initial_prompt) != 2:
@@ -1855,6 +1885,14 @@ class PromptBuilder:
         }
         if previous_failures is not None:
             payload["previousFailures"] = history
+        recompose_requested = False
+        if repair_strategy is not None:
+            strategy = copy.deepcopy(repair_strategy)
+            payload["repairStrategy"] = strategy
+            recompose_requested = strategy.get("scope") in ("parent_layout", "full_dsl")
+            strategy_instruction = strategy.get("instruction")
+            if isinstance(strategy_instruction, str) and strategy_instruction.strip():
+                payload["instruction"] += f" 本轮修复路由：{strategy_instruction.strip()}"
         if dsl_format == DESIGN_COMPACT_PROFILE_ID:
             try:
                 original_payload = json.loads(initial_prompt[1]["content"])
@@ -1862,14 +1900,59 @@ class PromptBuilder:
                 # 兼容旧调用的纯文字输入；可选交接解析不能新增修复失败。
                 original_payload = None
             recovery = None
-            if isinstance(original_payload, dict):
+            runtime_prompt_context_enabled = (
+                get_settings().enable_design_compact_runtime_prompt_context
+            )
+            if runtime_prompt_context_enabled and isinstance(original_payload, dict):
                 recovery = original_payload.get("compositionRecovery")
-            if isinstance(recovery, dict):
+            capacity_errors = []
+            for error in quality_errors:
+                message = error.get("message", "")
+                capacity_pattern = r"vertical layout requires|overflow|layout.*match|text width"
+                if re.search(capacity_pattern, message):
+                    capacity_errors.append(message)
+            can_recompute = (
+                runtime_prompt_context_enabled
+                and task_spec is not None
+                and compact_plan is not None
+            )
+            if capacity_errors and can_recompute:
+                task_value = task_spec.model_dump(mode="json")
+                samples = repair_display_samples(invalid_source_dsl, task_value)
+                constructive = feasible_composition_candidates(
+                    task_spec.size, compact_plan, task_value, display_samples=samples,
+                    display_roles=repair_display_roles(invalid_source_dsl),
+                    action_labels=repair_action_labels(invalid_source_dsl, task_value),
+                )
+                updated = composition_recovery_context(
+                    task_spec.size, compact_plan, constructive, task=task_value,
+                    implementation_conflicts=capacity_errors,
+                )
+                if updated is not None:
+                    recovery = updated
+                    recovery["displayPressureBasis"] = {
+                        "sourceDisplaySamplesOnly": samples,
+                        "instruction": "只用于原源完整文案和布尔最宽分支核算；保留原标签、"
+                        "前缀及完整绑定，不得把压力文案写成静态字段或省掉另一分支。",
+                    }
+            if isinstance(original_payload, dict) and "compositionRecovery" in original_payload:
+                original_payload.pop("compositionRecovery")
+                payload["originalUserContent"] = json.dumps(
+                    original_payload, ensure_ascii=False, separators=(",", ":"),
+                )
+            if capacity_errors and isinstance(recovery, dict):
                 payload["compositionRecovery"] = copy.deepcopy(recovery)
                 payload["instruction"] += (
-                    "遇到布局或容量冲突，compositionRecovery 是完整重组的直接依据；"
+                    "遇到布局或容量冲突，按compositionRecovery的诊断与完整文案压力重算；"
+                    "只有提供完整参考方案时才实现该方案，"
+                    "有限搜索未给出完整解时仍按完整合同合组，不能沿用已失效的旧参考。"
                     "保留事实动作和字号，落实整个变体与横纵合组，"
                     "不要继续维持 invalidSourceDsl 的超预算子树。"
+                )
+            elif not capacity_errors and not recompose_requested:
+                payload["instruction"] += (
+                    "本次没有布局或容量错误，不重做组合选型；"
+                    "保持待修树的合法布局，仅修属性、绑定、事件或覆盖问题。"
                 )
         user_content = json.dumps(
             payload,
