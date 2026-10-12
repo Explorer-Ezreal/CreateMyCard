@@ -507,7 +507,7 @@ def test_processor_reports_missing_plan_fact_with_dedicated_code() -> None:
     )
     result = DesignCompactProcessor().process(
         '["root","Column",{},["title"]]\n'
-        '["title","Text",{"content":"其他文字"}]',
+        '["title","SecondaryBody",{"role":"body","items":[{"value":"其他文字"}]}]',
         context,
     )
 
