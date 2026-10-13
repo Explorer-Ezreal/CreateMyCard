@@ -77,6 +77,44 @@ def test_info_block_contract_is_noninteractive() -> None:
     assert "不得绑定到 `InfoBlock`" in create_prompt
 
 
+def test_single_line_title_icon_uses_semantic_match_and_button_priority() -> None:
+    create_prompt = assemble_prompts(DEFAULT_SOURCE).get("create")
+
+    assert isinstance(create_prompt, str)
+    assert "分配顺序固定为动作在前、标题在后" in create_prompt
+    assert "再由 `SingleLineTitle` 从未占用候选中选择" in create_prompt
+    assert "按钮与标题不得复用同一素材，但可分别使用不同的语义匹配素材" in create_prompt
+    assert "没有剩余匹配素材时省略标题图标" in create_prompt
+    assert "不得为了保留标题图标把可使用准确图标的动作改成纯文字按钮" in create_prompt
+    assert "所有 `SingleLineTitle` 均不使用图标" not in create_prompt
+    assert "只有两类按钮都不使用图标" not in create_prompt
+    assert "与标题对象严格匹配的装饰性主题图标" not in create_prompt
+    assert "不可承担状态或动作语义" not in create_prompt
+
+
+def test_anchor_layout_requires_main_and_nonempty_support_information() -> None:
+    prompts = assemble_prompts(DEFAULT_SOURCE)
+    create_prompt = prompts.get("create")
+    plan_prompt = prompts.get("plan")
+
+    assert isinstance(create_prompt, str)
+    assert isinstance(plan_prompt, str)
+    assert "一个主信息组与至少一个可由核心组件承载的独立其它信息组" in create_prompt
+    assert "不要求固定三项，但至少一项" in create_prompt
+    assert "只在标题中展示的地点、对象或范围上下文不计入" in create_prompt
+    assert "没有独立支撑事实时排除 `S-title-anchor`" in create_prompt
+    assert "`layoutHints` 必须排除 `S-title-anchor`" in plan_prompt
+    assert "左下支撑必须分配至少一个未被标题或主信息消费的独立事实" in plan_prompt
+    assert "无需先证明整宽文字按钮造成空间压力" in create_prompt
+    assert "不以 `PillButton` 无法闭合为前提" in create_prompt
+    assert "只有底部 `PillButton` 无法与必要内容共同闭合时才使用" not in create_prompt
+    assert "不等于要求卡面显示动作文字" in create_prompt
+    assert "不限制信息项数量" not in create_prompt
+    assert "不设置最低信息项数" not in create_prompt
+    assert "至少三项必要信息" not in create_prompt
+    assert "存在至少三项必须展示的信息" not in create_prompt
+
+
 def test_create_prompt_uses_unified_component_terms() -> None:
     create_prompt = assemble_prompts(DEFAULT_SOURCE).get("create")
     component_source = (DEFAULT_SOURCE / "components/common.md").read_text(encoding="utf-8")
@@ -95,6 +133,14 @@ def test_secondary_body_contract_groups_related_items(prompt_name: str) -> None:
 
     assert "同组有 2–4 项时必须使用一个 supporting 实例" in prompt
     assert "不得把三项拆成三个单项后再给每项声明 `12`" in prompt
+    assert "标题、按钮、布局容器和其它 `SecondaryBody` 都不满足搭配条件" in prompt
+
+
+def test_secondary_body_repair_does_not_add_non_core_companions() -> None:
+    repair_prompt = read_prompt(DEFAULT_SOURCE, "repair", size="2x2")
+
+    assert "`SecondaryBody` 只能辅助同一语义分区内的核心信息组件" in repair_prompt
+    assert "不能通过增加按钮、标题或另一个" in repair_prompt
 
 
 @pytest.mark.parametrize(
@@ -293,7 +339,7 @@ def test_common_component_contract_separates_shared_and_size_specific_rules() ->
     assert "fontColor" not in catalog
     assert "组件不声明文字颜色" in catalog
     assert "进度组件默认不生成" in catalog
-    assert "SVG 默认视为可通过 `fillColor` 染色" in core_fragments.get(
+    assert "所有作为组件图标使用的 SVG 均视为可染色图标" in core_fragments.get(
         "input-candidates",
         "",
     )
@@ -516,7 +562,8 @@ def test_fewshot_source_is_one_document_per_size(size: str) -> None:
     expected = ["preamble"]
     if size == "2x2":
         expected.extend(
-            f"example-v{index:02d}" for index in (1, 9, 10, 12, 4, 11, 13, 5, 6, 2, 8, 3, 7)
+            f"example-v{index:02d}"
+            for index in (1, 9, 10, 12, 4, 11, 13, 5, 6, 2, 8, 14, 3, 7)
         )
     else:
         expected.extend(f"example-v{index:02d}" for index in (3, 16, 28, 9, 8, 10, 23, 6, 19, 38))

@@ -18,11 +18,16 @@ assert isinstance(CASES, list)
 # bf022115 允许标题图标；SVG 颜色沿用本分支已确认的候选描述策略。
 # 冻结快照不重生成，只有这两个旧的“不允许属性”错误迁移到新合同。
 TITLE_ICON_ERRORS = {
-    "header: SingleLineTitle does not allow icon.": (
-        "component header: tintable SVG resources/heart.svg must set fillColor explicitly; "
-        "omitting it renders the asset's default black."
-    ),
+    "header: SingleLineTitle does not allow icon.": None,
     "header: SingleLineTitle does not allow fillColor.": "SingleLineTitle.fillColor requires icon.",
+}
+
+SECONDARY_BODY_ONLY_CASES = {
+    1: "body",
+    83: "placeholder",
+    84: "placeholder",
+    110: "title",
+    111: "title",
 }
 
 # #506 将 compact EventCard 项间距从 8vp 改为 4vp；三项从 112vp 降到 104vp。
@@ -36,15 +41,30 @@ OLD_COMPACT_EVENT_HEIGHT_ERROR = (
 )
 
 
-def _expected_after_main_updates(expected: dict) -> dict:
+def _expected_after_main_updates(expected: dict, case_index: int) -> dict:
+    secondary_body_id = SECONDARY_BODY_ONLY_CASES.get(case_index)
+    if secondary_body_id is not None:
+        message = (
+            f"component {secondary_body_id}: SecondaryBody is auxiliary and cannot be the "
+            "only information component in its semantic region; pair it with a core "
+            "information component. Titles, buttons and other SecondaryBody instances "
+            "do not count."
+        )
+        return {
+            "exception": "CompactDslValidationError",
+            "message": f"Compact DSL validation failed:\n- {message}",
+            "errors": [message],
+        }
     errors = expected.get("errors")
     if not isinstance(errors, list) or len(errors) != 1:
         return expected
     if errors == [OLD_COMPACT_EVENT_HEIGHT_ERROR]:
         return {"warnings": []}
     replacement = TITLE_ICON_ERRORS.get(errors[0])
-    if replacement is None:
+    if errors[0] not in TITLE_ICON_ERRORS:
         return expected
+    if replacement is None:
+        return {"warnings": []}
     return {
         **expected,
         "errors": [replacement],
@@ -52,8 +72,8 @@ def _expected_after_main_updates(expected: dict) -> dict:
     }
 
 
-@pytest.mark.parametrize("case", CASES)
-def test_public_validator_matches_fusion_main(case: dict) -> None:
+@pytest.mark.parametrize(("case_index", "case"), list(enumerate(CASES)))
+def test_public_validator_matches_fusion_main(case_index: int, case: dict) -> None:
     inputs = case.get("input")
     expected = case.get("expected")
     assert isinstance(inputs, dict)
@@ -74,4 +94,4 @@ def test_public_validator_matches_fusion_main(case: dict) -> None:
             observed["cause_text"] = str(exc.__cause__)
     else:
         observed = {"warnings": list(result.warnings)}
-    assert observed == _expected_after_main_updates(expected)
+    assert observed == _expected_after_main_updates(expected, case_index)
