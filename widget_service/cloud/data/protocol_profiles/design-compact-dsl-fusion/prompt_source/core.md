@@ -175,7 +175,7 @@ CardSpec，不负责判断候选能力是否真实可用，也不扩大输入声
 ```genui
 ["root","Column",{"width":"matchParent","height":"matchParent","padding":12,"borderRadius":20,"clip":true,"alignItems":"center","justifyContent":"start","linearGradient":{"direction":"RightBottom","colors":[["#FFCBDDFE",0],["#FFF1F6FE",1]]}},["header","main"]]
 ["header","SingleLineTitle",{"title":"卡片标题","fontSize":12}]
-["main","SecondaryBody",{"role":"body","items":[{"value":"主要内容","maxLines":1}],"fontSize":14}]
+["main","SecondaryBody",{"items":[{"value":"主要内容","maxLines":1}],"fontSize":14}]
 ["/state/ready",true]
 ```
 
@@ -243,7 +243,7 @@ CardSpec，不负责判断候选能力是否真实可用，也不扩大输入声
 ### 4.2.2 标签、对象与数值不得分离
 
 - 风向不能代替风力标签。展示 `windLevel` 时写成完整的 `{{ '风力 ' + ${/data/weather/current/windLevel} + '级' }}`，或在同一父组放“风力”标签和数值；只写“东南风 / 2级”不成立。
-- `calendar.eventCount` 用一个 `SecondaryBody role="body"` 的显示值表达用户要求的时间范围、动态数量和日程语义，例如 `{{ '未来7天 ' + ${/data/calendar/eventCount} + '项安排' }}`；不得拆成孤立大数字与“件事”，也不得擅自把时间范围写成7天。
+- `calendar.eventCount` 用一个 `SecondaryBody` 的显示值表达用户要求的时间范围、动态数量和日程语义，例如 `{{ '未来7天 ' + ${/data/calendar/eventCount} + '项安排' }}`；不得拆成孤立大数字与“件事”，也不得擅自把时间范围写成7天。
 - 左右耳、多设备、多个日期的值都要保留各自对象或时间标识。两个百分比的位置顺序不能代替“左耳/右耳”标签。
 - `ProgressCircle`、`ProgressLine2`、`ProgressCircleSingle` 与其读数必须使用同一对象、同一指标的数据。完整数值百分比字符串可原样驱动可见读数，并由转换器为内部进度换算 number；禁止从普通正文截取数字、借用另一对象的 number 字段、样例常量或改写数据类型来画环。缺少可验证比例时不能通过视觉伪装补齐。
 

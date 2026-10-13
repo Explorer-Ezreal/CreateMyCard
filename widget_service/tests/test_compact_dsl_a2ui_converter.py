@@ -1077,7 +1077,7 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
             ["ratio_item0_value", "ratio_item0_unit"],
         )
 
-    def test_secondary_body_supports_bound_body_metadata_and_supporting_text(self) -> None:
+    def test_secondary_body_supports_bindings_without_roles(self) -> None:
         compact_dsl = _serialize(
             [
                 [
@@ -1090,7 +1090,6 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
                     "body",
                     "SecondaryBody",
                     {
-                        "role": "body",
                         "items": [
                             {
                                 "value": {"path": "/data/description"},
@@ -1104,7 +1103,6 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
                     "metadata",
                     "SecondaryBody",
                     {
-                        "role": "metadata",
                         "items": [{"value": "{{ '更新 ' + ${/data/updatedAt} }}"}],
                         "fontColor": "#FF1F4799",
                     },
@@ -1113,7 +1111,6 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
                     "supporting",
                     "SecondaryBody",
                     {
-                        "role": "supporting",
                         "items": [{"label": "状态 ", "value": "正常"}],
                         "fontColor": "#FF1F4799",
                     },
@@ -1132,11 +1129,11 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
         components = {item["id"]: item for item in update["components"]}
 
         self.assertEqual(components["body_item0_value"]["content"], "{{ ${/data/description} }}")
-        self.assertEqual(components["body_item0_value"]["styles"]["fontSize"], 14)
+        self.assertEqual(components["body_item0_value"]["styles"]["fontSize"], 12)
         self.assertEqual(components["body_item0_value"]["styles"]["fontWeight"], 400)
         self.assertEqual(components["body_item0_value"]["styles"]["maxLines"], 2)
-        self.assertEqual(components["body_item0_value"]["styles"]["height"], 40)
-        self.assertEqual(components["metadata_item0_value"]["styles"]["fontSize"], 12)
+        self.assertEqual(components["body_item0_value"]["styles"]["height"], 32)
+        self.assertEqual(components["metadata_item0_value"]["styles"]["fontSize"], 14)
         self.assertEqual(components["metadata_item0_value"]["styles"]["fontWeight"], 400)
         self.assertEqual(components["metadata_item0_value"]["styles"]["maxLines"], 1)
         self.assertEqual(components["supporting_item0_label"]["content"], "状态 ")
@@ -1150,12 +1147,60 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
             1,
         )
 
+    def test_secondary_body_styles_follow_rows_in_both_sizes(self) -> None:
+        cases = [(2, 14, 19, ["details_row0"]), (1, 12, 16, ["details_row0", "details_row1"])]
+        for size in ("2x2", "2x4"):
+            for columns, font_size, line_height, children in cases:
+                with self.subTest(size=size, columns=columns):
+                    source = _serialize(
+                        [
+                            ["root", "Column", {}, ["details"]],
+                            [
+                                "details",
+                                "SecondaryBody",
+                                {
+                                    "columns": columns,
+                                    "fontSize": font_size,
+                                    "items": [
+                                        {"label": "电量 ", "value": {"path": "/data/percent"}},
+                                        {"value": "{{ '状态 ' + ${/data/status} }}"},
+                                    ],
+                                },
+                            ],
+                            ["/data/percent", 68],
+                            ["/data/status", "未充电"],
+                        ]
+                    )
+                    result = convert_compact_dsl_to_a2ui(source, size=size)
+                    update = json.loads(result.splitlines()[1]).get("updateComponents")
+                    assert isinstance(update, dict)
+                    nodes = update.get("components")
+                    assert isinstance(nodes, list)
+                    by_id = {node.get("id"): node for node in nodes}
+                    details = by_id.get("details")
+                    assert isinstance(details, dict)
+                    self.assertEqual(details.get("children"), children)
+                    value = by_id.get("details_item0_value")
+                    assert isinstance(value, dict)
+                    self.assertEqual(value.get("content"), "{{ ${/data/percent} }}")
+                    styles = value.get("styles")
+                    assert isinstance(styles, dict)
+                    self.assertEqual(styles.get("fontSize"), font_size)
+                    self.assertEqual(styles.get("fontWeight"), 400)
+                    self.assertEqual(styles.get("height"), line_height)
+                    self.assertAlmostEqual(styles.get("lineHeight") * font_size, line_height)
+                    separator = by_id.get("details_row0_separator")
+                    if columns == 2:
+                        assert isinstance(separator, dict)
+                        self.assertEqual(separator.get("content"), " | ")
+                    else:
+                        self.assertIsNone(separator)
+
     def test_secondary_body_rejects_uncontrolled_text_shapes(self) -> None:
         invalid_props = [
-            {"items": [{"value": "正文"}], "fontColor": "#FF1F4799"},
+            {"items": [{"value": "正文"}], "columns": 3},
             {
-                "role": "body",
-                "items": [{"label": "说明", "value": "正文"}],
+                "items": [{"label": {"path": "/data/label"}, "value": "正文"}],
                 "fontColor": "#FF1F4799",
             },
             {
@@ -1204,7 +1249,7 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
             ),
             (
                 "SecondaryBody",
-                {"role": "metadata", "items": [{"value": "10:30"}], "fontSize": 12},
+                {"items": [{"value": "10:30", "maxLines": 2}], "fontSize": 12},
             ),
             (
                 "DataDisplay",
@@ -1299,13 +1344,13 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
         update = json.loads(result.splitlines()[1])["updateComponents"]
         components = {item["id"]: item for item in update["components"]}
 
-        self.assertEqual(components["metadata_item0_value"]["styles"]["height"], 36)
+        self.assertEqual(components["metadata_item0_value"]["styles"]["height"], 32)
         self.assertEqual(components["metadata_item0_value"]["styles"]["maxLines"], 2)
 
-    def test_secondary_body_font_size_error_explains_role_and_item_count(self) -> None:
+    def test_secondary_body_font_size_error_explains_line_layout(self) -> None:
         cases = [
-            (2, 12, "Recipe value 14", "role=supporting with 2 items"),
-            (3, 14, "Recipe value 12", "role=supporting with 3 items"),
+            (2, 12, "Recipe value 14", "single row"),
+            (3, 14, "Recipe value 12", "multiple rows"),
         ]
         for item_count, font_size, expected_value, expected_context in cases:
             with self.subTest(item_count=item_count):
@@ -1335,7 +1380,7 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
                 message = str(context.exception)
                 self.assertIn(expected_value, message)
                 self.assertIn(expected_context, message)
-                self.assertIn("Recompute fontSize after changing role or items", message)
+                self.assertIn("changing columns, items or maxLines", message)
 
     def test_expands_info_block_progress_visual_and_two_event_card_items(self) -> None:
         compact_dsl = _serialize(

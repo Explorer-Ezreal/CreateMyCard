@@ -92,8 +92,8 @@ def test_create_prompt_uses_unified_component_terms() -> None:
 def test_secondary_body_contract_groups_related_items() -> None:
     prompt = read_prompt(DEFAULT_SOURCE, "create", size="2x4")
 
-    assert "同组有 2–4 项时必须使用一个 supporting 实例" in prompt
-    assert "不得把三项拆成三个单项后再给每项声明 `12`" in prompt
+    assert "多个短字段按原顺序放入一个实例" in prompt
+    assert "两项同行用 14；两项 `columns:1` 分行用 12" in prompt
 
 
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
@@ -298,13 +298,16 @@ def test_common_component_contract_separates_shared_and_size_specific_rules() ->
         "",
     )
     assert "`Text` 仅由转换器展开为 A2UI 基础节点" in selection
-    assert "| `role` | string | 仅静态 | 单项必填" in catalog
+    assert "多源时使用至少 2 个有序 PathBinding" in catalog
+    assert "数组由转换器按顺序以 ` | ` 连接" in catalog
+    assert '"secondaryText":[{"path":"/data/weather/location/prefectureName"}' in catalog
+    assert "| `role` |" not in catalog
     assert "| `items[].label` | 显示值 | 静态 / Expression / PathBinding" in catalog
     progress_binding_contract = (
         "| `value` | number / string / PathBinding | 静态 / PathBinding；不接受 Expression"
     )
     assert progress_binding_contract in catalog
-    assert '`role:"body"`' in catalog
+    assert "不输出 `role`" in catalog
     assert "仍保留至少 20% 水平余量" in core_fragments.get(
         "input-candidates",
         "",

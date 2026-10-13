@@ -24,8 +24,8 @@ def test_repair_system_prompt_requires_root_cause_and_regression_checks() -> Non
     assert "无损紧凑组件替换阶段" in REPAIR_SYSTEM_PROMPT
     assert "本阶段最多连续提交两次完整 Compact DSL" in REPAIR_SYSTEM_PROMPT
     assert "不启用可选信息删除" in REPAIR_SYSTEM_PROMPT
-    assert "body 或 1–2 项 supporting 使用 14" in REPAIR_SYSTEM_PROMPT
-    assert "metadata 或 3–4 项 supporting 使用 12" in REPAIR_SYSTEM_PROMPT
+    assert "整组单行用14" in REPAIR_SYSTEM_PROMPT
+    assert "多行用12；行高分别19和16" in REPAIR_SYSTEM_PROMPT
     assert "drop_optional_component" in REPAIR_SYSTEM_PROMPT
     assert "唯一可删的非 Action 业务展示组件" in REPAIR_SYSTEM_PROMPT
     assert "等待微服务根据剩余 DSL" in REPAIR_SYSTEM_PROMPT
