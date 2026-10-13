@@ -75,6 +75,22 @@ def test_info_block_contract_is_noninteractive() -> None:
     assert "InfoBlock.onClick" not in create_prompt
     assert "合法可点击 InfoBlock" not in create_prompt
     assert "不得绑定到 `InfoBlock`" in create_prompt
+    plain_example = (
+        '["weather","InfoBlock",'
+        '{"primaryText":{"path":"/data/weather/current/temperatureText"}'
+    )
+    icon_example = (
+        '"visual":{"type":"icon",'
+        '"icon":"resources/base/media/moon_z_fill_1.svg"}'
+    )
+    progress_example = (
+        '"visual":{"type":"progressCircle",'
+        '"icon":"resources/base/media/battery_leaf_fill.svg"}'
+    )
+    assert plain_example in create_prompt
+    assert icon_example in create_prompt
+    assert progress_example in create_prompt
+    assert "不使用 `dataIds` 或" in create_prompt
 
 
 def test_single_line_title_icon_uses_semantic_match_and_button_priority() -> None:
@@ -127,12 +143,12 @@ def test_create_prompt_uses_unified_component_terms() -> None:
         assert deprecated not in create_prompt
 
 
-@pytest.mark.parametrize("prompt_name", ["create", "plan"])
-def test_secondary_body_contract_groups_related_items(prompt_name: str) -> None:
-    prompt = read_prompt(DEFAULT_SOURCE, prompt_name, size="2x4")
+def test_secondary_body_contract_groups_related_items() -> None:
+    prompt = read_prompt(DEFAULT_SOURCE, "create", size="2x4")
 
-    assert "同组有 2–4 项时必须使用一个 supporting 实例" in prompt
-    assert "不得把三项拆成三个单项后再给每项声明 `12`" in prompt
+    assert "组件不区分 role" in prompt
+    assert "多个短字段按原顺序放入一个实例" in prompt
+    assert "两项同行用 14；两项 `columns:1` 分行用 12" in prompt
     assert "标题、按钮、布局容器和其它 `SecondaryBody` 都不满足搭配条件" in prompt
 
 
@@ -143,51 +159,52 @@ def test_secondary_body_repair_does_not_add_non_core_companions() -> None:
     assert "不能通过增加按钮、标题或另一个" in repair_prompt
 
 
-@pytest.mark.parametrize(
-    ("size", "included", "excluded"),
-    [
-        ("2x2", "## 2x2 组件选型", "## 2x4 组件选型"),
-        ("2x4", "## 2x4 组件选型", "## 2x2 组件选型"),
-    ],
-)
-def test_plan_prompt_reuses_full_create_contract_for_size(
-    size: str,
-    included: str,
-    excluded: str,
-) -> None:
+@pytest.mark.parametrize("size", ["2x2", "2x4"])
+def test_plan_prompt_contains_only_incremental_contract(size: str) -> None:
     plan_prompt = read_prompt(DEFAULT_SOURCE, "plan", size=size)
 
-    assert "你是 HarmonyOS 桌面卡片极简协议 DSL 生成模型" in plan_prompt
-    assert "## 1. 组件总表" in plan_prompt
-    assert "| 标题 | `SingleLineTitle` | 单行标题 |" in plan_prompt
-    assert "| 多项属性 | `TableText` | 多行标签—值 |" in plan_prompt
-    assert "# 2. Compact DSL 组件合同" in plan_prompt
-    assert "### 6.1 `EventCard`" in plan_prompt
-    assert "## 从事实到组件组合" in plan_prompt
     assert "# Compact Info Plan" in plan_prompt
-    assert "2x4 左右独立分区可分别使用" in plan_prompt
-    assert "完整单焦点" in plan_prompt
-    assert "存在地点、备注、另一指标等独立补充时" in plan_prompt
-    assert "短文本结论固定 `18`" in plan_prompt
-    assert "`supportingText` | 显示值 | 静态 / Expression / PathBinding" in plan_prompt
-    assert "标题事实不推荐正文组件" in plan_prompt
-    assert "时间、metadata 和补充说明使用 SecondaryBody" in plan_prompt
-    assert "固定主字号，帮助布局预算" in plan_prompt
-    assert "| `fontSize` | number | 仅静态 | 新生成必填；核心值固定 `30`" in plan_prompt
-    assert included in plan_prompt
-    assert excluded not in plan_prompt
+    assert "submit_card_plan" in plan_prompt
+    assert "你是 HarmonyOS 桌面卡片极简协议 DSL 生成模型" not in plan_prompt
+    assert "## 1. 组件总表" not in plan_prompt
+    assert "## 2x2 组件选型" not in plan_prompt
+    assert "## 2x4 组件选型" not in plan_prompt
 
 
-def test_plan_prompt_appends_contract_after_complete_create_prompt() -> None:
+def test_plan_manifest_only_registers_incremental_contract() -> None:
     manifest = json.loads((DEFAULT_SOURCE / "manifest.yaml").read_text(encoding="utf-8"))
     prompts = manifest.get("prompts")
     assert isinstance(prompts, dict)
-    create_references = prompts.get("create")
     plan_references = prompts.get("plan")
-    assert isinstance(create_references, list)
     assert isinstance(plan_references, list)
 
-    assert plan_references == [*create_references, "plan.md#contract"]
+    assert plan_references == ["plan.md#contract"]
+
+
+def test_create_prompt_defers_output_format_to_latest_agent_stage() -> None:
+    create_prompt = read_prompt(DEFAULT_SOURCE, "create", size="2x4")
+
+    assert "你是 HarmonyOS 桌面卡片生成 Agent" in create_prompt
+    assert "最后出现的 `<agent_stage>...</agent_stage>` 标记决定" in create_prompt
+    assert "`<agent_stage>plan</agent_stage>`：只按本轮工具 Schema 提交" in create_prompt
+    assert "没有任何阶段标记时" in create_prompt
+    assert "你的唯一任务是" not in create_prompt
+    assert "你只生成 DSL" not in create_prompt
+
+
+def test_core_does_not_repeat_final_prohibition_checklist() -> None:
+    manifest = json.loads((DEFAULT_SOURCE / "manifest.yaml").read_text(encoding="utf-8"))
+    create_references = manifest.get("prompts", {}).get("create")
+    core_source = (DEFAULT_SOURCE / "core.md").read_text(encoding="utf-8")
+
+    assert isinstance(create_references, list)
+    assert "core.md#prohibitions-checks" not in create_references
+    assert "prompt:prohibitions-checks" not in core_source
+    assert "以下是输出前必须全部通过的零容错门禁" in read_prompt(
+        DEFAULT_SOURCE,
+        "create",
+        size="2x4",
+    )
 
 
 def test_two_by_two_layout_prompt_delegates_derived_sizes_to_flex_layout() -> None:
@@ -282,14 +299,14 @@ def test_two_by_four_layout_prompt_delegates_derived_sizes_to_flex_layout() -> N
 
 
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
-def test_create_and_plan_share_common_component_catalog(size: str) -> None:
+def test_plan_prompt_does_not_duplicate_create_contract(size: str) -> None:
     create_prompt = read_prompt(DEFAULT_SOURCE, "create", size=size)
     plan_prompt = read_prompt(DEFAULT_SOURCE, "plan", size=size)
 
     heading = "## 1. 组件总表"
-    assert plan_prompt.startswith(create_prompt)
     assert create_prompt.count(heading) == 1
-    assert plan_prompt.count(heading) == 1
+    assert plan_prompt.count(heading) == 0
+    assert plan_prompt not in create_prompt
 
 
 def test_common_component_contract_separates_shared_and_size_specific_rules() -> None:
@@ -344,13 +361,16 @@ def test_common_component_contract_separates_shared_and_size_specific_rules() ->
         "",
     )
     assert "`Text` 仅由转换器展开为 A2UI 基础节点" in selection
-    assert "| `role` | string | 仅静态 | 单项必填" in catalog
+    assert "多源时使用至少 2 个有序 PathBinding" in catalog
+    assert "数组由转换器按顺序以 ` | ` 连接" in catalog
+    assert '"secondaryText":[{"path":"/data/weather/location/prefectureName"}' in catalog
+    assert "| `role` |" not in catalog
     assert "| `items[].label` | 显示值 | 静态 / Expression / PathBinding" in catalog
     progress_binding_contract = (
         "| `value` | number / string / PathBinding | 静态 / PathBinding；不接受 Expression"
     )
     assert progress_binding_contract in catalog
-    assert '`role:"body"`' in catalog
+    assert "不输出 `role`" in catalog
     assert "仍保留至少 20% 水平余量" in core_fragments.get(
         "input-candidates",
         "",

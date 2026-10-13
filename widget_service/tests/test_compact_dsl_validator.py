@@ -184,7 +184,7 @@ def test_model_output_rejects_direct_text_and_isolated_secondary_body() -> None:
     semantic_body = "\n".join(
         [
             '["root","Column",{},["body"]]',
-            '["body","SecondaryBody",{"role":"body","items":['
+            '["body","SecondaryBody",{"items":['
             '{"value":"普通正文","maxLines":1}],"fontColor":"#FF1F4799"}]',
         ]
     )
@@ -206,8 +206,8 @@ def test_model_output_accepts_secondary_body_with_core_sibling() -> None:
             '["root","Column",{},["content"]]',
             '["content","Column",{"itemMargin":2},["primary","support"]]',
             '["primary","EmphasisText",{"mainText":"已连接","fontSize":18}]',
-            '["support","SecondaryBody",{"role":"metadata","items":'
-            '[{"value":"更新于 10:00"}],"fontSize":12}]',
+            '["support","SecondaryBody",{"items":'
+            '[{"value":"更新于 10:00"}],"fontSize":14}]',
         ]
     )
     validate_compact_dsl(

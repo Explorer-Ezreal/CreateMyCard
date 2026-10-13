@@ -323,7 +323,6 @@ def _composition_tool_schema(size: Any) -> dict[str, Any]:
             "referenceHeight": {**extent, "description": "完整组件按实际条数/行数合计占高。"},
             "variant": {"type": "string"},
             "density": {"type": "string", "enum": ["compact"]},
-            "role": {"type": "string", "enum": ["body", "supporting", "metadata"]},
             "columns": {"type": "integer", "enum": [1, 2]},
             "lines": {"type": "array", "items": {"type": "integer", "enum": [1, 2]},
                       "description": "依每个实际文本 item 顺序记录行数，不一律设两行。"},
@@ -648,7 +647,7 @@ def _composition_group(
         for line in lines:
             if type(line) is not int or line not in (1, 2):
                 return None
-    for key in ("variant", "density", "role"):
+    for key in ("variant", "density"):
         if key in value and not isinstance(value.get(key), str):
             return None
         allowed = schema.get("properties", {}).get(key, {}).get("enum")
@@ -671,7 +670,7 @@ def _composition_group(
             group["implementationConflict"] = (
                 "TableText only supports two or three contiguous items, not "
                 f"{len(item_indexes)}. Keep every fact; regroup ordinary information in "
-                "SecondaryBody at its original role/font, combining short same-object "
+                "SecondaryBody at its legal single-row/multiline font, combining short same-object "
                 "attributes into full-width labelled lines when they fit. Do not copy "
                 "the invalid table or shrink text to create a smaller table."
             )

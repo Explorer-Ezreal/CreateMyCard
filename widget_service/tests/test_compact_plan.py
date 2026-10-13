@@ -180,7 +180,6 @@ def test_plan_composition_rejects_isolated_secondary_body_region() -> None:
             "factIndexes": [0, 1],
             "placements": ["items[0].value", "items[1].value"],
             "referenceHeight": 38,
-            "role": "supporting",
         }
     ]
 
@@ -218,7 +217,6 @@ def test_plan_composition_accepts_secondary_body_with_core_group() -> None:
             "factIndexes": [1],
             "placements": ["items[0].value"],
             "referenceHeight": 18,
-            "role": "metadata",
         },
     ]
 

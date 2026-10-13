@@ -13,7 +13,9 @@ Plan 确定展示信息的优先级与操作。运行时容量上下文开启时
 同名候选不等于每项事实各生成一个实例；不得为了组件使用率删事实、伪造数值或动作。
 # Compact Info Plan
 
-本轮不要生成 Compact DSL，只调用 `submit_card_plan`：
+当最新用户消息标记 `<agent_stage>plan</agent_stage>` 时，不生成 Compact DSL，
+只提交 `submit_card_plan` JSON 工具调用包。收到该工具的成功结果和
+`<agent_stage>compact_dsl</agent_stage>` 后，本阶段限制结束，继续在同一对话中生成 Compact DSL：
 
 1. 将用户要求展示的内容拆成原子事实，每项填写简短 `requirement`。
    每项同时填写 `priority`：核心信息、用户明确不可缺少的内容以及所有操作为 `must`；
