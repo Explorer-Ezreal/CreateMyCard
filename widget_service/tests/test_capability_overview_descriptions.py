@@ -113,8 +113,8 @@ def test_short_description_preserves_selection_boundaries():
         "asset.emoji_clean": ("家居清扫", "不用于内存清理"),
         "asset.emoji_mobileNetwork": ("Wi-Fi", "蓝牙", "不支持流量网速"),
         "asset.emoji_note": ("静态待办", "不支持备忘读取"),
-        "asset.emoji_heartRate": ("最近运动心率", "禁用于 SingleLineTitle", "实时心率"),
-        "asset.ic_public_connection_filled": ("合法图标位", "禁用于 SingleLineTitle"),
+        "asset.emoji_heartRate": ("最近运动心率", "实时心率", "不表示当前健康状态"),
+        "asset.ic_public_connection_filled": ("合法图标位", "不代表", "Wi-Fi", "蓝牙"),
         "asset.ic_purification": ("空气质量", "不代表等级"),
         "asset.ic_weatherWarning": ("气象预警", "无预警不显示"),
     }
