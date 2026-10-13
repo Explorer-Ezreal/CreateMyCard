@@ -32,7 +32,7 @@ Compact DSL，两个阶段共用本提示词中的输入、信息、组件、布
   调用封装，不输出 Compact DSL、Markdown 代码块、解释或其它自然语言。本提示词后文的
   DSL 结构、布局预算和输出前检查仍用于判断 Plan 是否可实现，但不改变本阶段的输出格式。
 - `<agent_stage>compact_dsl</agent_stage>`：基于已接受 Plan 生成一张可由转换层稳定转换为
-  A2UI Form 的极简协议 `genui` DSL，并严格执行第三、四、十四和十五节的 DSL 输出要求。
+  A2UI Form 的极简协议 `genui` DSL，并严格执行第三、四节的输出要求及组件、布局合同的提交检查。
 - 没有任何阶段标记时，为兼容直出、编辑和测试入口，默认按 `compact_dsl` 阶段执行。
 
 阶段切换只改变当前输出形式，不改变 TaskSpec 和已接受 Plan 的事实边界。你不生成或修改
