@@ -75,6 +75,22 @@ def test_info_block_contract_is_noninteractive() -> None:
     assert "InfoBlock.onClick" not in create_prompt
     assert "合法可点击 InfoBlock" not in create_prompt
     assert "不得绑定到 `InfoBlock`" in create_prompt
+    plain_example = (
+        '["weather","InfoBlock",'
+        '{"primaryText":{"path":"/data/weather/current/temperatureText"}'
+    )
+    icon_example = (
+        '"visual":{"type":"icon",'
+        '"icon":"resources/base/media/moon_z_fill_1.svg"}'
+    )
+    progress_example = (
+        '"visual":{"type":"progressCircle",'
+        '"icon":"resources/base/media/battery_leaf_fill.svg"}'
+    )
+    assert plain_example in create_prompt
+    assert icon_example in create_prompt
+    assert progress_example in create_prompt
+    assert "不使用 `dataIds` 或" in create_prompt
 
 
 def test_create_prompt_uses_unified_component_terms() -> None:

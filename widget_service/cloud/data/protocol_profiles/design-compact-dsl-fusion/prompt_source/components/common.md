@@ -359,14 +359,29 @@ Expression；`mainText` 不接受数组，互不相关或需要逐项标签的�
 
 #### 示例
 
+无尾部视觉时，只输出同一对象的一组主辅信息。2x2 可省略 `variant`：
+
 ```genui
-["battery","InfoBlock",{"variant":"slot","primaryText":{"path":"/data/phoneBattery/batterySOC"},"unit":"%","secondaryText":{"path":"/data/phoneBattery/chargingStatusDesc"},"visual":{"type":"progressCircle","icon":"resources/base/media/battery_leaf_fill.svg"},"backgroundColor":"#99FFFFFF"}]
+["weather","InfoBlock",{"primaryText":{"path":"/data/weather/current/temperatureText"},"secondaryText":{"path":"/data/weather/current/condition"},"backgroundColor":"#CCFFFFFF"}]
+```
+
+有准确语义图标时使用 `visual.type:"icon"`。Compact DSL 直接绑定真实路径，不使用 `dataIds` 或
+`primaryTextTemplate`；需要静态标签时改用只包含一个动态绑定的完整 Expression：
+
+```genui
+["sleep","InfoBlock",{"variant":"slot","primaryText":{"path":"/data/healthSport/sleepScore"},"unit":"分","secondaryText":"{{ '状态 ' + ${/data/healthSport/sleepStatus} }}","visual":{"type":"icon","icon":"resources/base/media/moon_z_fill_1.svg"},"fillColor":"#991F4799","backgroundColor":"#99FFFFFF"}]
+```
+
+主信息是可验证的 `0–100` 数值时，才可使用 `visual.type:"progressCircle"`。原始数值绑定和单位必须分开：
+
+```genui
+["battery","InfoBlock",{"variant":"slot","primaryText":{"path":"/data/phoneBattery/batterySOC"},"unit":"%","secondaryText":{"path":"/data/phoneBattery/chargingStatusDesc"},"visual":{"type":"progressCircle","icon":"resources/base/media/battery_leaf_fill.svg"},"fillColor":"#991F4799","backgroundColor":"#99FFFFFF"}]
 ```
 
 #### 注意事项
 
 visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。没有准确 visual 时不生成尾部空槽；
-外层和内部均不得写 `onClick`。
+每行只承载一个业务值，不把对象名、指标名或第二个动态字段拼入 `primaryText`；外层和内部均不得写 `onClick`。
 
 ### 4.9 `TableText`
 
