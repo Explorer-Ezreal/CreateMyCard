@@ -74,6 +74,9 @@ COMPACT_INPUT_COMPONENT_TYPES = frozenset(
         "Row",
         "Column",
         "Stack",
+        "Layout",
+        "Region",
+        "Group",
         "Text",
         "ProgressCircle",
         "PillButton",
@@ -102,7 +105,7 @@ COMPACT_INPUT_COMPONENT_TYPES = frozenset(
 # Historical Few-shot and local conversion fixtures may still contain direct Text rows.
 # The live model boundary uses this narrower set and requires semantic text components.
 MODEL_COMPACT_INPUT_COMPONENT_TYPES = COMPACT_INPUT_COMPONENT_TYPES - {"Text"}
-_CONTAINER_TYPES = frozenset({"Row", "Column", "Stack"})
+_CONTAINER_TYPES = frozenset({"Row", "Column", "Stack", "Layout", "Region", "Group"})
 _SEMANTIC_FIELDS = {
     "Text": frozenset({"content"}),
     "Image": frozenset({"src"}),
@@ -380,9 +383,34 @@ _DESIGN_ALIASES: dict[str, dict[str, str]] = {}
 # 外部布局只作用于组件根，不允许覆盖 Recipe 的内部字号、配色或结构。
 
 
-def parse_compact_dsl_rows(compact_dsl: str) -> tuple[CompactRow, ...]:
+def parse_compact_dsl_rows(
+    compact_dsl: str, *, expand_layouts: bool = True, size: str | None = None,
+) -> tuple[CompactRow, ...]:
     """Parse Design Compact DSL into the row model shared with validation."""
-    return tuple(_parse_compact_rows(compact_dsl))
+    from services.compact_semantic_layout import expand_semantic_layout_rows
+
+    rows = _parse_compact_rows(compact_dsl)
+    if expand_layouts:
+        expansion = expand_semantic_layout_rows(rows, size=size)
+        rows = _canonicalize_component_order(list(expansion.rows))
+    return tuple(rows)
+
+
+def expand_compact_semantic_layout(compact_dsl: str, *, size: str) -> tuple[str, dict[str, str]]:
+    """显式编译与来源映射用于 Trace；绑定修复和编辑始终保留语义原文。"""
+    from services.compact_semantic_layout import expand_semantic_layout_rows
+
+    rows = _parse_compact_rows(compact_dsl)
+    expansion = expand_semantic_layout_rows(rows, size=size)
+    if not expansion.origins:
+        return compact_dsl, {}
+    ordered = _canonicalize_component_order(list(expansion.rows))
+    return _serialize_repaired_rows(ordered), expansion.origins
+
+
+def serialize_compact_dsl_source(compact_dsl: str) -> str:
+    """保存已解析、语法修正后的源行；不展开语义布局或改写业务 Props。"""
+    return _serialize_repaired_rows(_parse_compact_rows(compact_dsl))
 
 
 def build_compact_data_model(data_rows: list[DataRow]) -> dict[str, Any]:
@@ -592,7 +620,7 @@ def convert_compact_dsl_to_a2ui(
     from services.compact_layout_runtime import adaptive_slot_ids
 
     profile = protocol_profile or {"version": "v0.9"}
-    rows = _parse_compact_rows(compact_dsl)
+    rows = list(parse_compact_dsl_rows(compact_dsl, size=size))
     components, data_rows = _split_component_rows(rows)
     _validate_compact_component_bindings(components)
     data_model = _build_data_model(data_rows)

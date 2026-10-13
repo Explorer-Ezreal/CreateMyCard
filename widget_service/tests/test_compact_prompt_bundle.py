@@ -172,7 +172,7 @@ def test_two_by_two_layout_prompt_delegates_derived_sizes_to_flex_layout() -> No
         assert retained_contract in layouts
 
 
-def test_two_by_four_layout_prompt_delegates_derived_sizes_to_flex_layout() -> None:
+def test_two_by_four_layout_prompt_delegates_geometry_to_semantic_templates() -> None:
     source = (DEFAULT_SOURCE / "layouts/2x4.md").read_text(encoding="utf-8")
     fragments = dict(FRAGMENT.findall(source))
     layouts = fragments.get("w-layouts", "")
@@ -186,9 +186,6 @@ def test_two_by_four_layout_prompt_delegates_derived_sizes_to_flex_layout() -> N
         "26 + 6 + 36 + 6 + 36",
         "38 + 8 + 36 + 8 + 36",
         "title 20 + 4 + body 86",
-        "132×126vp",
-        "132×57vp",
-        "116×110vp",
         '"layoutWeight":15',
         '"layoutWeight":8',
         '"height":20',
@@ -196,27 +193,24 @@ def test_two_by_four_layout_prompt_delegates_derived_sizes_to_flex_layout() -> N
         assert removed_budget not in layouts
 
     for retained_contract in (
-        "`padding:12`",
-        "`padding:8`",
-        "Sub-118 内纵向主要角色使用 `6vp` 间距",
-        "Sub-140 使用 `8vp`",
-        '"layoutWeight":1',
-        '"height":"matchParent"',
+        "132×126vp",
+        "132×57vp",
+        "116×110vp",
+        "紧凑版主要角色间距6vp",
+        "宽版8vp",
+        '"Layout"',
+        '"Region"',
     ):
         assert retained_contract in layouts
 
     for sub_layout in (
-        "Sub-118-A",
-        "Sub-118-B",
-        "Sub-118-C",
-        "Sub-118-D",
-        "Sub-140-A",
-        "Sub-140-B",
-        "Sub-140-C",
-        "Sub-140-D",
-        "Sub-140-F",
-        "Sub-140-G",
-        "Sub-140-H",
+        "center",
+        "title-content",
+        "title-primary-details",
+        "title-content-action",
+        "title-two-ratios",
+        "title-hero-support-action",
+        "four-ratios",
     ):
         assert sub_layout in layouts
 

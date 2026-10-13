@@ -79,7 +79,7 @@ def validate_compact_dsl(
 ) -> CompactDslValidationResult:
     """Validate expressions, first-frame data, and TaskSpec data boundaries."""
     try:
-        rows = parse_compact_dsl_rows(compact_dsl)
+        rows = parse_compact_dsl_rows(compact_dsl, size=task_spec.get("size"))
     except CompactDslConversionError as exc:
         raise CompactDslValidationError([str(exc)]) from exc
     components = ComponentRows(row for row in rows if isinstance(row, ComponentRow))
@@ -91,6 +91,11 @@ def validate_compact_dsl(
         data_rows=[],
         task_spec=task_spec,
         card_spec=card_spec,
+    )
+    from services.compact_dsl_a2ui_converter import expand_compact_semantic_layout
+
+    _expanded_source, context.layout_origins = expand_compact_semantic_layout(
+        compact_dsl, size=task_spec.get("size"),
     )
     if enforce_model_component_types:
         model_errors = collect_model_component_errors(components)
@@ -134,7 +139,9 @@ def validate_compact_dsl(
     errors = DiagnosticCollector()
     _collect_asset_source_errors(components, task_spec, errors)
     _collect_component_contract_errors(components, task_spec, errors)
-    _collect_ambiguous_metric_text_errors(components, task_spec, errors)
+    _collect_ambiguous_metric_text_errors(
+        components, task_spec, errors, layout_origins=context.layout_origins,
+    )
     _collect_semantic_text_errors(components, task_spec, errors)
     _collect_raw_boolean_text_errors(components, task_spec, errors)
     _collect_progress_value_errors(components, task_spec, errors)
