@@ -204,6 +204,17 @@
             "flexShrink": 0
           }
         }
+      },
+      "sizes": {
+        "2x4": {
+          "parts": {
+            "root": {
+              "styles": {
+                "width": "wrapContent"
+              }
+            }
+          }
+        }
       }
     },
     "EmphasisText": {

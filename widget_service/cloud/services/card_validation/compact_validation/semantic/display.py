@@ -216,6 +216,33 @@ def _has_dangling_range_separator(content: Any) -> bool:
     return bool(re.search("(?:'|\\\")\\s*(?:-|~|～|至|–|—)\\s*(?:'|\\\")\\s*$", body))
 
 
+def _calendar_badge_title_context(
+    component: ComponentRow,
+    parent_by_child: dict[str, str],
+    components_by_id: dict[str, ComponentRow],
+    task_spec: dict[str, Any],
+) -> str:
+    """2x4 数量 Badge 只借用同一标题行，不跨区域搜索说明。"""
+    if task_spec.get("size") != "2x4":
+        return ""
+    if not _uses_visual_recipe_part(component, "Badge.root"):
+        return ""
+    parent = components_by_id.get(parent_by_child.get(component.component_id))
+    if parent is None or parent.component_type != "Row" or len(parent.children) != 2:
+        return ""
+    for sibling_id in parent.children:
+        if sibling_id == component.component_id:
+            continue
+        title = components_by_id.get(sibling_id)
+        if title is None:
+            continue
+        if title.component_type == "Column" and len(title.children) == 1:
+            title = components_by_id.get(title.children[0])
+        if title is not None and title.component_type == "SingleLineTitle":
+            return _static_text_fragments(title.props.get("title"))
+    return ""
+
+
 def _collect_semantic_text_errors(
     components: list[ComponentRow], task_spec: dict[str, Any], errors: list[str]
 ) -> None:
@@ -252,10 +279,16 @@ def _collect_semantic_text_errors(
         own_text = _static_text_fragments(content)
         nearby_text = _nearby_text_context(component, parent_by_child, components_by_id)
         if any(path.endswith("/eventcount") for path in normalized_paths):
+            count_context = " ".join((own_text, _calendar_badge_title_context(
+                component, parent_by_child, components_by_id, task_spec,
+            )))
             has_range_context = any(
-                marker in own_text for marker in ("未来", "接下来", "近", "今天", "明天", "本周")
+                marker in count_context
+                for marker in ("未来", "接下来", "近", "今天", "明天", "本周")
             )
-            has_schedule_context = any(marker in own_text for marker in ("安排", "日程", "会议"))
+            has_schedule_context = any(
+                marker in count_context for marker in ("安排", "日程", "会议")
+            )
             if not has_range_context or not has_schedule_context:
                 errors.append(
                     f"component {component.component_id}: calendar eventCount must not be "

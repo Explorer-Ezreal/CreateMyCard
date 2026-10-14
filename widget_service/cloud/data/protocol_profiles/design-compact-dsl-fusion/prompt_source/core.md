@@ -243,7 +243,7 @@ CardSpec，不负责判断候选能力是否真实可用，也不扩大输入声
 ### 4.2.2 标签、对象与数值不得分离
 
 - 风向不能代替风力标签。展示 `windLevel` 时写成完整的 `{{ '风力 ' + ${/data/weather/current/windLevel} + '级' }}`，或在同一父组放“风力”标签和数值；只写“东南风 / 2级”不成立。
-- `calendar.eventCount` 用一个 `SecondaryBody role="body"` 的显示值表达用户要求的时间范围、动态数量和日程语义，例如 `{{ '未来7天 ' + ${/data/calendar/eventCount} + '项安排' }}`；不得拆成孤立大数字与“件事”，也不得擅自把时间范围写成7天。
+- `calendar.eventCount` 必须与用户要求的统计范围、日程集合含义一起理解。2x4 同时展示集合数量与成员详情时，可用 `Group variant="title-count"`：SingleLineTitle 写真实统计范围与日程集合名称，Badge 只绑定数量，成员标题和时间放入内容区。不把数量作为孤立大数字，不从其它分区借说明，也不擅自把范围写成7天。其它形式仍用完整正文表达范围、动态数量和日程语义；2x2 保持一个 `SecondaryBody role="body"` 的完整显示值。
 - 左右耳、多设备、多个日期的值都要保留各自对象或时间标识。两个百分比的位置顺序不能代替“左耳/右耳”标签。
 - `ProgressCircle`、`ProgressLine2`、`ProgressCircleSingle` 与其读数必须使用同一对象、同一指标的数据。完整数值百分比字符串可原样驱动可见读数，并由转换器为内部进度换算 number；禁止从普通正文截取数字、借用另一对象的 number 字段、样例常量或改写数据类型来画环。缺少可验证比例时不能通过视觉伪装补齐。
 
