@@ -11,6 +11,8 @@ Plan 确定展示信息的优先级与操作。运行时容量上下文开启时
 先把同对象、同事件或同级属性组织成信息组，再给组内事实推荐可共同承载它们的语义组件。
 第一候选是合同条件满足时应落实的首选，不是可以任意忽略的备注；其余为不适配时的备选。
 同名候选不等于每项事实各生成一个实例；不得为了组件使用率删事实、伪造数值或动作。
+两种尺寸均按登记的语义布局评估容量：2x2选择S系列有序角色与Group，2x4使用W系列及Region/Group。
+本阶段仍只提交工具Schema，不输出Layout节点或展开后的几何；最终DSL在下一阶段生成。
 # Compact Info Plan
 
 当最新用户消息标记 `<agent_stage>plan</agent_stage>` 时，不生成 Compact DSL，
@@ -60,7 +62,7 @@ Plan 确定展示信息的优先级与操作。运行时容量上下文开启时
    用户主要要求概览的“统计范围＋数量＋对象名称”作为同一主信息时，优先 EmphasisText 完整承载，
    不为省空间改成次级正文；超宽用同字号分行或更换分区，不能删范围或数量后缀。辅助时间仍按普通正文表达。
    “7小时1分”等完整多段时长是文本主读数，不是一个纯数字：主信息首选 EmphasisText，
-   辅助信息沿用 SecondaryBody，但只能与同一语义分区内的核心信息组件搭配；不推荐 EmphasizedData，
+   辅助信息沿用 SecondaryBody，但整卡必须同时存在核心信息组件，二者允许位于不同语义分区；不推荐 EmphasizedData，
    不拆完整绑定或从样例取数字。
    带标签的辅助时长按完整标签＋值核算，单行不足时合法两行或重排，并预留真实行高。
    标题组件是唯一例外：单行分区标题推荐 `SingleLineTitle`，标题加紧密相关次信息推荐 `DoubleLineTitle`；
@@ -78,9 +80,10 @@ Plan 确定展示信息的优先级与操作。运行时容量上下文开启时
    `actionId` 只推荐当前尺寸组件选型中明确支持事件的动作组件，不推荐 EventCard、InfoBlock 等内容组件；
    dataId/text 事实不推荐按钮。
    2x2 只有一个显式动作时，若候选中存在与动作语义严格匹配的 SVG、用户未要求卡面显示动作文字，且
-   正文事实可明确拆分为一个主信息组与至少一个可由核心组件承载的独立其它信息组，动作首选 `CircleButton`，其它信息进入
+   正文事实可明确拆分为一个主信息组与至少一个独立其它信息组，动作首选 `CircleButton`，其它信息进入
    左下支撑区；支撑信息不要求固定三项，但不能为零。标题、动作以及仅在标题中展示的地点、对象或范围
-   上下文都不计作其它信息，也不能重复展示到支撑区凑数；左下不能只有 `SecondaryBody` 与按钮。满足这些条件时，`CircleButton` 和
+   上下文都不计作其它信息，也不能重复展示到支撑区凑数；左下可用 `SecondaryBody` 承载辅助事实，只要
+   整卡其它位置已有核心信息组件。满足这些条件时，`CircleButton` 和
    `S-title-anchor` 排在 `PillButton` 与文字动作布局之前，也不要求先证明整宽按钮会压缩正文。缺少独立
    支撑事实、准确图标，动作必须依赖
    文字解释、用户明确要求按钮文案或操作风险需要文字确认时，首选 `PillButton`。用户仅用“点击、点一下、
@@ -108,9 +111,9 @@ Plan 确定展示信息的优先级与操作。运行时容量上下文开启时
    - 每区按显示顺序提交 `groups`，一个group代表一个组件实例；`factIndexes` 是原始
      info_required 的0起始索引，`placements` 与其逐项对应，如 items[0].value、title、label。
      保留全部真实事实/动作，标题和正文不重复展示同一事实；同一事件的时间、地点等合在一个item。
-   - 某个 region 包含 `SecondaryBody` group 时，同一 region 还必须包含至少一个核心信息组件 group；
-     标题、Badge、PillButton、CircleButton、CardButton、布局容器及其它 SecondaryBody 都不算核心。
-     不能用其它 region 的核心组件满足该条件，也不能提交只有 SecondaryBody 加动作的 region。
+   - composition 包含 `SecondaryBody` group 时，整卡至少还必须包含一个核心信息组件 group；二者允许位于
+     不同 region。标题、Badge、PillButton、CircleButton、CardButton、布局容器及其它 SecondaryBody
+     都不算核心。SecondaryBody 仍只承载辅助事实，不能将主要结论降级后仅用于满足布局。
      无硬事实的装饰 SingleLineTitle 用 factIndexes:[]、placements:[] 预留，仍计标题高度，
      不为填索引而把主读数重复放进标题。其它组件不能用空事实组。
      一条事实用于同一进度实例的 value 和 displayValue 时，重复该索引使 placements 逐项对应，
@@ -149,6 +152,6 @@ assetAssignments 后
 - 同一事件的标题、起止时间和地点共同组成 EventCard 的一个 item；多个事件放在同一个 EventCard 中，
   不因事实拆分而重复创建组件或省略结束时间。
 - SingleLineTitle 每个语义分区最多一个；2x4 左右独立分区可分别使用。标题事实不推荐正文组件；辅助正文、
-  普通时间、metadata 和补充说明使用 SecondaryBody，并与同区核心组件搭配；核心文本结论使用
-  EmphasisText。SecondaryBody 不得成为分区唯一信息组件，按钮和标题不算核心组件。
+  普通时间、metadata 和补充说明使用 SecondaryBody；整卡须另有核心信息组件，但允许位于其它分区。
+  核心文本结论使用 EmphasisText，按钮和标题不算核心组件。
 <!-- /prompt:contract -->

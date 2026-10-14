@@ -13,7 +13,7 @@ function usage(exitCode = 0) {
   const output = exitCode === 0 ? process.stdout : process.stderr;
   output.write(
     "用法：\n" +
-    "  node build_gallery.mjs <批次目录> [--cards <CardSpec目录>] [--output <HTML路径>]\n\n" +
+    "  node build_gallery.mjs <批次目录> [--cards <CardSpec目录>] [--output <HTML路径>] [--python <解释器>]\n\n" +
     "示例：\n" +
     "  node build_gallery.mjs output/cardspec24_repair10\n" +
     "  node build_gallery.mjs output/cardspec24_repair10 --cards cardSpec24 --output output/cardspec24_repair10/gallery.html\n",
@@ -26,7 +26,7 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--help" || argument === "-h") usage();
-    if (argument === "--cards" || argument === "--output") {
+    if (argument === "--cards" || argument === "--output" || argument === "--python") {
       const value = argv[index + 1];
       if (!value || value.startsWith("--")) throw new Error(`${argument} 缺少参数值`);
       options[argument.slice(2)] = value;
@@ -79,20 +79,22 @@ function main() {
     throw new Error("缺少 Renderer Node 依赖，请先在 render/genui-sdk 安装依赖");
   }
 
+  const exporterArguments = [
+    tsxCli,
+    "--tsconfig",
+    tsconfig,
+    exporter,
+    "--input",
+    runDirectory,
+    "--cards",
+    cardsDirectory,
+    "--output",
+    outputPath,
+  ];
+  if (options.python) exporterArguments.push("--python", options.python);
   const completed = spawnSync(
     process.execPath,
-    [
-      tsxCli,
-      "--tsconfig",
-      tsconfig,
-      exporter,
-      "--input",
-      runDirectory,
-      "--cards",
-      cardsDirectory,
-      "--output",
-      outputPath,
-    ],
+    exporterArguments,
     { cwd: platformRoot, encoding: "utf8", stdio: "inherit" },
   );
   if (completed.error) throw completed.error;

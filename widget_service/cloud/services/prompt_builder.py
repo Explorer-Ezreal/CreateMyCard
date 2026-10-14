@@ -1585,7 +1585,8 @@ class PromptBuilder:
         layouts = "、".join(allowed_layout_ids(task_spec.size, layout_scope))
         fixed_layout = layout_scope in {"S-content-dual-action"}
         output_contract = (
-            "最终 DSL 只输出已注册的基础布局组件和组件，不输出布局 ID、Card 或 Region 节点。"
+            "最终 DSL 使用 Layout 选择本尺寸登记的 S 系列布局，children 按角色顺序填写；"
+            "同区内容可用登记的 Group 合组。不输出 Region、Row/Column/Stack 或内部几何参数。"
         )
         if task_spec.size == "2x4":
             output_contract = (
@@ -2199,18 +2200,18 @@ class PromptBuilder:
                     "保留事实动作和字号，落实整个变体与横纵合组，"
                     "不要继续维持上一轮 Compact DSL 的超预算子树。"
                 )
-            elif task_spec is not None and task_spec.size == "2x4" and missing_action:
+            elif task_spec is not None and missing_action:
                 payload["instruction"] += (
                     "动作覆盖失败时先核对按钮是否从 root 可达，不能仅新增孤立组件行。"
-                    "优先使用现有合法动作位；没有可用动作位时允许最小必要的 Region"
+                    "优先使用现有合法动作位；没有可用动作位时允许最小必要的语义组合"
                     "或父布局变更以保留全部 Action，不能冻结无法承载这些操作的布局。"
                     "保留已正确的业务内容、绑定和对象归属，不因补按钮降级完整事件。"
                 )
-            elif task_spec is not None and task_spec.size == "2x4" and missing_fact:
+            elif task_spec is not None and missing_fact:
                 payload["instruction"] += (
                     "展示事实缺失时先恢复所属信息组，再核算补齐全部字段后的容量。"
                     "原布局仅装入部分事实时合法，不代表补齐后仍合法；优先在原组合法合并"
-                    "短属性，必要时最小范围调整组件组合、Region或父布局。"
+                    "短属性，必要时最小范围调整组件组合或当前尺寸父布局。"
                     "不把超过项目数的条目塞入单个辅助组件，不裁切、静态化或删除字段来补覆盖。"
                     "已有正确事实、绑定和Action保持不变，不打散同级关系或混入无关对象。"
                 )

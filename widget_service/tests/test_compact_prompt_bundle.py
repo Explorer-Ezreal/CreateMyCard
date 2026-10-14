@@ -94,7 +94,7 @@ def test_info_block_contract_is_noninteractive() -> None:
     assert progress_example in create_prompt
     assert "不使用 `dataIds` 或" in create_prompt
     assert "`S-title-dual-content` 的两个 `126×50vp` 槽" in create_prompt
-    assert '"height":50,"primaryText":"{{ \'明天 \' +' in create_prompt
+    assert '"variant":"stacked","primaryText":"{{ \'明天 \' +' in create_prompt
     assert "每行只承载一个动态业务值" in create_prompt
 
 
@@ -120,7 +120,8 @@ def test_anchor_layout_requires_main_and_nonempty_support_information() -> None:
 
     assert isinstance(create_prompt, str)
     assert isinstance(plan_prompt, str)
-    assert "一个主信息组与至少一个可由核心组件承载的独立其它信息组" in create_prompt
+    assert "一个主信息组与至少一个独立其它信息组" in create_prompt
+    assert "左下可以使用 `SecondaryBody` 承载辅助事实" in create_prompt
     assert "不要求固定三项，但至少一项" in create_prompt
     assert "只在标题中展示的地点、对象或范围上下文不计入" in create_prompt
     assert "没有独立支撑事实时排除 `S-title-anchor`" in create_prompt
@@ -154,7 +155,7 @@ def test_secondary_body_contract_groups_related_items() -> None:
     assert "组件不区分 role" in prompt
     assert "多个短字段按原顺序放入一个实例" in prompt
     assert "两项同行用 14；两项 `columns:1` 分行用 12" in prompt
-    assert "标题、按钮、布局容器和其它 `SecondaryBody` 都不满足搭配条件" in prompt
+    assert "整卡不能只有 `SecondaryBody`、标题与按钮" in prompt
     assert "刷新元数据默认不展示" in prompt
     assert "不得为了填空单独创建 `SecondaryBody`" in prompt
 
@@ -175,7 +176,7 @@ def test_owned_action_layout_comparison_is_size_scoped_and_reaches_plan(size: st
         assert "紧凑区容量不成立时仍比较其它合法布局，不强行分区" in system
 def test_secondary_body_repair_does_not_add_non_core_companions() -> None:
     repair_prompt = read_prompt(DEFAULT_SOURCE, "repair", size="2x2")
-    assert "`SecondaryBody` 只能辅助同一语义分区内的核心信息组件" in repair_prompt
+    assert "`SecondaryBody` 只能辅助整卡中已存在的核心信息组件" in repair_prompt
     assert "不能通过增加按钮、标题或另一个" in repair_prompt
 
 
@@ -282,7 +283,7 @@ def test_core_does_not_repeat_final_prohibition_checklist() -> None:
     )
 
 
-def test_two_by_two_layout_prompt_delegates_derived_sizes_to_flex_layout() -> None:
+def test_two_by_two_layout_prompt_delegates_geometry_to_semantic_templates() -> None:
     source = (DEFAULT_SOURCE / "layouts/2x2.md").read_text(encoding="utf-8")
     layouts = dict(FRAGMENT.findall(source)).get("s-layouts", "")
 
@@ -300,12 +301,12 @@ def test_two_by_two_layout_prompt_delegates_derived_sizes_to_flex_layout() -> No
         assert removed_budget not in layouts
 
     for retained_contract in (
-        "`padding:12`",
-        "`padding:8`",
-        "`layoutWeight`",
-        "动作按钮固定高 `36vp`",
-        "固定 `40×40vp` 槽",
-        '"alignContent":"center"',
+        "Layout是root",
+        "不输出Row/Column/Stack",
+        "padding8",
+        "40×40槽居中",
+        "按钮36vp",
+        '"Layout"',
     ):
         assert retained_contract in layouts
 
@@ -420,7 +421,7 @@ def test_common_component_contract_separates_shared_and_size_specific_rules() ->
         "### `CardButton`",
     ):
         assert dedicated_heading not in catalog
-    assert "`width`、`height`、`layoutWeight`、`flexShrink`、`margin`" in catalog
+    assert "新语义源不填写width、height、layoutWeight、flexShrink、margin" in catalog
     assert "fontColor" not in selection
     assert "fontColor" not in catalog
     assert "组件不声明文字颜色" in catalog

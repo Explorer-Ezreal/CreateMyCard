@@ -399,13 +399,11 @@ def test_examples_use_only_supported_component_types(
 ) -> None:
     types = set(_component_types(source))
     assert "Progress" not in types, identifier
-    allowed = BASE_COMPONENTS | HIGH_LEVEL_COMPONENTS
-    if task.get("size") == "2x4":
-        allowed = allowed | SEMANTIC_LAYOUT_TYPES
-        assert "Layout" in types, identifier
-        assert not types.intersection({"Row", "Column", "Stack"}), identifier
-    else:
-        assert not types.intersection(SEMANTIC_LAYOUT_TYPES), identifier
+    allowed = BASE_COMPONENTS | HIGH_LEVEL_COMPONENTS | SEMANTIC_LAYOUT_TYPES
+    assert "Layout" in types, identifier
+    assert not types.intersection({"Row", "Column", "Stack"}), identifier
+    if task.get("size") == "2x2":
+        assert "Region" not in types, identifier
     assert types.issubset(allowed), identifier
 
 
@@ -513,7 +511,7 @@ def test_example_reaches_its_generation_route(
         if task_spec.size == "2x4":
             assert f" {layout_scope}：" in assembled
         else:
-            assert f"### `{layout_scope}`" in assembled
+            assert layout_scope in assembled
 
 
 def test_few_shot_switch_skips_document_loading(monkeypatch) -> None:
