@@ -20,7 +20,7 @@ def test_wide_supporting_text_includes_static_label_in_single_line_budget(
         ["body", "Region", {"variant": "title-primary-details"}, ["title", "main", "detail"]],
         ["title", "SingleLineTitle", {"title": "设备状态", "fontSize": 12}],
         ["main", "EmphasisText", {"mainText": "在线", "fontSize": 18}],
-        ["detail", "SecondaryBody", {"role": "supporting", "items": [item], "fontSize": 14}],
+        ["detail", "SecondaryBody", {"items": [item], "fontSize": 12 if max_lines == 2 else 14}],
         ["a", "InfoBlock", {"variant": "slot", "primaryText": "就绪", "secondaryText": "设备状态",
                             "backgroundColor": "#99FFFFFF"}],
         ["b", "InfoBlock", {"variant": "slot", "primaryText": "关闭", "secondaryText": "免打扰",

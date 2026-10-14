@@ -34,6 +34,7 @@ from custom.a2ui_model_client import (
 )
 from custom.model_runtime import ModelExecutionRuntime
 from models.artifact import ArtifactMeta, GenerationPlan, WidgetArtifact
+from models.capability import AssetCapabilityOverview
 from models.generation import (
     DEFAULT_WIDGET_SIZE,
     ModelRequestContext,
@@ -210,7 +211,13 @@ class WidgetGenerationService:
                 for item in data_capabilities
             ],
             eventCapabilities=event_capabilities,
-            assetCandidates=asset_capabilities,
+            assetCandidates=[
+                AssetCapabilityOverview(
+                    id=item.id,
+                    description=item.overviewDescription or item.description,
+                )
+                for item in asset_capabilities
+            ],
             unavailableCapabilities=[item.id for item in removed],
         )
         logger.info(
@@ -1069,6 +1076,9 @@ class WidgetGenerationService:
             nonlocal compact_agent_messages
             nonlocal effective_generation_prompt
             nonlocal model_call_phase, quality_repair_attempt_count
+            nonlocal source_generated_by_template
+            # 模型修复阶段切换回模型组件规则。
+            source_generated_by_template = False
             trace_phase("repair")
             quality_error_payloads = [
                 asset_mapper.restore_diagnostic_values(item.to_prompt_payload())
@@ -1604,8 +1614,16 @@ class WidgetGenerationService:
         design_token = None
         if policy.stores_design_token:
             design_token = model_client.extract_genui_payload(source_dsl)
-            if policy.processor_kind == DslProcessorKind.DESIGN_COMPACT and task_spec.size == "2x4":
-                design_token = serialize_compact_dsl_source(latest_processing_result.source_dsl)
+            preserve_compact_source = (
+                policy.processor_kind == DslProcessorKind.DESIGN_COMPACT
+                and task_spec.size == "2x4"
+                and not source_generated_by_jsx
+            )
+            if preserve_compact_source:
+                design_token = serialize_compact_dsl_source(
+                    latest_processing_result.source_dsl,
+                    skip_compact_dsl_validation=source_generated_by_template,
+                )
         final_artifact_build_started_at = time.perf_counter()
         artifact = self._build_artifact(
             genui,

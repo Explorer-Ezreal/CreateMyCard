@@ -898,7 +898,7 @@ class PromptBuilder:
                 task_spec.eventCandidates
             ) and PromptBuilder._query_requests_action(task_spec)
             if normalized_roots == {"calendar", "earphone"} and has_meeting_action:
-                return ("2x2-V02", "2x2-V04")
+                return ("2x2-V14",)
             if normalized_roots == {"phonebattery", "earphone"}:
                 return (_TWO_BY_TWO_DUAL_FEW_SHOT_ID,)
             if PromptBuilder._query_mentions_weather(task_spec):
@@ -943,6 +943,15 @@ class PromptBuilder:
             return "W-four-slots"
         block_count = PromptBuilder._data_block_count(task_spec)
         if task_spec.size == "2x2":
+            normalized_roots = {
+                root.casefold() for root in PromptBuilder._data_roots(task_spec)
+            }
+            has_meeting_action = (
+                bool(task_spec.eventCandidates)
+                and PromptBuilder._query_requests_action(task_spec)
+            )
+            if normalized_roots == {"calendar", "earphone"} and has_meeting_action:
+                return "S-title-anchor"
             if block_count >= 4:
                 return "S-quad-content"
             if block_count >= 2:
@@ -1565,6 +1574,14 @@ class PromptBuilder:
         """构造 Plan 与 DSL 共享的本轮布局范围和动态字段提醒。"""
         layout_scope = PromptBuilder.layout_scope(task_spec)
         layouts = "、".join(allowed_layout_ids(task_spec.size, layout_scope))
+        output_contract = (
+            "最终 DSL 只输出已注册的基础布局组件和组件，不输出布局 ID、Card 或 Region 节点。"
+        )
+        if task_spec.size == "2x4":
+            output_contract = (
+                "最终 DSL 使用 Layout 选择本尺寸登记的父布局，以 Region 选择内容变体、"
+                "Group 选择受控组合；不输出 Row/Column/Stack 或内部展开的几何参数。"
+            )
         prompt = (
             "# 本轮组件与布局选择\n\n"
             f"当前尺寸 {task_spec.size}，合法布局范围：{layouts}。\n"
@@ -1572,8 +1589,8 @@ class PromptBuilder:
             "组件软候选，再按完整内容选择合法布局。布局建议不是硬锁，"
             "不能按业务名称、候选字段总数或示例强制构图。"
             "候选组件不适配时改选其它已注册组件或合法组件组合，不能改变内部 Recipe、"
-            "删事实或动作来提高使用率。最终 DSL 只输出已注册的基础布局组件和组件，"
-            "不输出布局 ID、Card 或 Region 节点。"
+            "删事实或动作来提高使用率。"
+            f"{output_contract}"
         )
         formatted_percent_instruction = PromptBuilder._formatted_percent_instruction(task_spec)
         if formatted_percent_instruction:
@@ -2206,10 +2223,10 @@ class PromptBuilder:
                     payload["instruction"] += (
                         "originalDisplayRoles是各路径首次可读输出的原规格，不是上轮失败输出的新规格，"
                         "也不是新组件清单；不能因为中途降字就把较小字号当成基准。"
-                        "按fontSize保留实际Recipe规格，supporting多条时可能为12fp，不能只按role猜字号。"
-                        "容量修复保留对应正文/metadata和主值字号；先在全宽同行合并短辅助属性，"
-                        "长文案按原字号合法分行并预留行高，再换可承载的完整布局变体。"
-                        "不要将14fp supporting改成12fp TableText/metadata，也不要把30fp主读数"
+                        "SecondaryBody按最终行布局选字号：单行14fp/19vp，多行12fp/16vp，不区分role。"
+                        "容量修复保留主值字号；普通正文可按合法单行或多行模式重新核算，先合并短辅助属性，"
+                        "长正文分行时按12fp/16vp预留行高，再换可承载的完整布局变体。"
+                        "不要为缩字把正文伪装成TableText，也不要把30fp主读数"
                         "降为18fp EmphasisText以消除溢出；重复主值只去重，不删独有事实。"
                         "只固定合法文字规格，不照搬原错误布局、绑定或重复单位；类型/单位"
                         "本来不合法时仍按原字段合同纠正，不能把容量错误当作降字理由。"

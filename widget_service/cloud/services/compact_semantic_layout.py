@@ -6,6 +6,7 @@ from copy import deepcopy
 from dataclasses import dataclass
 from typing import NoReturn
 
+from services.compact_component_runtime import visual_recipe_part
 from services.compact_high_level_components import (
     CompactDslConversionError,
     CompactRow,
@@ -95,6 +96,7 @@ class _Compiler:
         self.result: list[ComponentRow] = []
         self.origins: dict[str, str] = {}
         self.seen: set[str] = set()
+        self.ratio_cells: dict[str, str] = {}
 
     def validate_tree(self, identifier: str, visiting: set[str], visited: set[str]) -> None:
         if identifier in visiting:
@@ -311,6 +313,8 @@ class _Compiler:
                              {"height": "matchParent", "alignItems": "center",
                               "justifyContent": "center", "layoutWeight": 1})
             cells.append(cell)
+            if self.node(child).component_type == "ProgressCircle":
+                self.ratio_cells[child] = cell
         identifier = self.generated(origin, "ratios")
         rows = []
         for index in range(2 if grid else 1):
@@ -323,6 +327,55 @@ class _Compiler:
         self.add(identifier, "Column", {"width": "matchParent", "itemMargin": 8,
                                         "layoutWeight": 1}, tuple(rows), origin)
         return identifier
+
+    def inject_ratio_geometry(self) -> None:
+        """只为模板登记的环形槽位补几何，源文仍不接受业务宽高。"""
+        if not self.ratio_cells:
+            return
+        from services.compact_region_layout import reference_region_boxes
+
+        nodes = []
+        for row in self.result:
+            styles = deepcopy(row.props)
+            if row.component_type in {"SingleLineTitle", "DoubleLineTitle", "Badge", "PillButton"}:
+                variant = None
+                if row.component_type == "SingleLineTitle" and row.props.get("icon"):
+                    variant = "withIcon"
+                _, recipe_styles = visual_recipe_part(
+                    row.component_type, "root", size="2x4", variant=variant,
+                )
+                styles = {**recipe_styles, **styles}
+                if row.component_type == "DoubleLineTitle":
+                    _, title_styles = visual_recipe_part("DoubleLineTitle", "title", size="2x4")
+                    _, secondary = visual_recipe_part("DoubleLineTitle", "secondary", size="2x4")
+                    constraint = secondary.get("constraintSize")
+                    secondary_height = None
+                    if isinstance(constraint, dict):
+                        secondary_height = constraint.get("maxHeight")
+                    title_height = title_styles.get("height")
+                    gap = recipe_styles.get("itemMargin")
+                    if not all(isinstance(value, (int, float))
+                               for value in (title_height, secondary_height, gap)):
+                        _fail(row.component_id,
+                              "DoubleLineTitle recipe has unknown reference height")
+                    styles["height"] = title_height + secondary_height + gap
+            nodes.append({"id": row.component_id, "component": row.component_type,
+                          "styles": styles, "children": list(row.children)})
+        boxes = reference_region_boxes(nodes, size="2x4")
+        resolved = []
+        for row in self.result:
+            cell_id = self.ratio_cells.get(row.component_id)
+            if cell_id is None:
+                resolved.append(row)
+                continue
+            box = boxes.get(cell_id)
+            if box is None or box.width is None or box.height is None:
+                _fail(row.component_id, "ratio slot has unknown reference dimensions")
+            if box.width <= 0 or box.height <= 0:
+                _fail(row.component_id, "ratio slot has no positive reference capacity")
+            props = {**row.props, "width": box.width, "height": box.height}
+            resolved.append(ComponentRow(row.component_id, row.component_type, props, row.children))
+        self.result = resolved
 
     def contains_type(self, identifiers: tuple[str, ...], kind: str) -> bool:
         for identifier in identifiers:
@@ -452,6 +505,7 @@ class _Compiler:
                 row_ids.append(row_id)
             children = tuple(row_ids)
         self.add("root", kind, props, children, "root")
+        self.inject_ratio_geometry()
         compiled = {row.component_id for row in self.result}
         missing = set(self.by_id) - compiled
         if missing:

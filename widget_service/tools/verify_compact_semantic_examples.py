@@ -97,10 +97,12 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("source", type=Path)
     parser.add_argument("output", type=Path)
+    parser.add_argument("--reference-ref", default="origin/main",
+                        help="用于核对示例输入与业务事实的已同步上游引用")
     args = parser.parse_args()
     repository = CLOUD.parents[1]
     relative = args.source.resolve().relative_to(repository).as_posix()
     original_source = subprocess.check_output(
-        ["git", "show", "2d43d55:" + relative], cwd=repository,
+        ["git", "show", args.reference_ref + ":" + relative], cwd=repository,
     ).decode("utf-8")
     verify(original_source, args.source.read_text(encoding="utf-8"), args.output)

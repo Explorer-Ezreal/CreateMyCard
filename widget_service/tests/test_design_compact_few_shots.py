@@ -12,6 +12,7 @@ from services.card_validation import validate_compact_dsl
 from services.card_validation.contrast_validator import _composite, _contrast, _rgba
 from services.compact_dsl_a2ui_converter import convert_compact_dsl_to_a2ui
 from services.compact_prompt_loader import assemble_prompts
+from services.compact_semantic_layout import SEMANTIC_LAYOUT_TYPES
 from services.prompt_builder import PromptBuilder
 from services.protocol_registry import A2UIProtocolRegistry
 
@@ -79,6 +80,7 @@ EXPECTED_EXAMPLE_ORDER = {
         "2x2-V06",
         "2x2-V02",
         "2x2-V08",
+        "2x2-V14",
         "2x2-V03",
         "2x2-V07",
     ),
@@ -107,6 +109,7 @@ EXPECTED_LAYOUT_BY_EXAMPLE = {
     "2x2-V06": "S-title-primary-secondary-action",
     "2x2-V02": "S-title-anchor",
     "2x2-V08": "S-title-anchor",
+    "2x2-V14": "S-title-anchor",
     "2x2-V03": "S-content-dual-action",
     "2x2-V07": "S-dual-info",
     "2x4-V03": "W-top-bottom",
@@ -202,6 +205,7 @@ def test_few_shot_validates_and_converts(
         source,
         task_spec=task,
         card_spec={"suggestSize": size},
+        enforce_model_component_types=True,
     )
     assert not result.warnings, identifier
 
@@ -344,12 +348,20 @@ def test_examples_use_only_declared_actions_and_assets(
     assert actual_assets.issubset(expected_assets), identifier
 
 
+def test_meeting_example_keeps_title_icon_aligned_with_primary_information() -> None:
+    _, source = _example("2x2-V14")
+    rows = {row[0]: row for row in _rows(source)}
+
+    assert rows["title_area"][2].get("icon") == "resources/base/media/calendar_fill.svg"
+    assert rows["meeting_action"][2].get("icon") == "resources/base/media/icon_meeting.svg"
+
+
 @pytest.mark.parametrize(
     ("identifier", "required"),
     (
         ("2x2-V01", {"DataDisplay"}),
         ("2x2-V02", {"SingleLineTitle", "NumericRatioStack", "CircleButton"}),
-        ("2x2-V03", {"SecondaryBody", "PillButton"}),
+        ("2x2-V03", {"TableText", "PillButton"}),
         ("2x2-V04", {"SingleLineTitle", "EventCard", "PillButton"}),
         ("2x2-V05", {"SingleLineTitle", "EmphasizedData", "SecondaryBody", "PillButton"}),
         ("2x2-V06", {"SingleLineTitle", "EmphasizedData", "SecondaryBody", "PillButton"}),
@@ -360,6 +372,10 @@ def test_examples_use_only_declared_actions_and_assets(
         ("2x2-V11", {"SingleLineTitle", "ProgressCircleSingle", "PillButton"}),
         ("2x2-V12", {"ProgressCircle"}),
         ("2x2-V13", {"SingleLineTitle", "ProgressCircleSingle", "PillButton"}),
+        (
+            "2x2-V14",
+            {"SingleLineTitle", "EventCard", "TableText", "CircleButton"},
+        ),
         ("2x4-V03", {"EmphasizedData", "TextBlock"}),
     ),
 )
@@ -381,10 +397,16 @@ def test_examples_use_only_supported_component_types(
     task: dict,
     source: str,
 ) -> None:
-    del task
     types = set(_component_types(source))
     assert "Progress" not in types, identifier
-    assert types.issubset(BASE_COMPONENTS | HIGH_LEVEL_COMPONENTS), identifier
+    allowed = BASE_COMPONENTS | HIGH_LEVEL_COMPONENTS
+    if task.get("size") == "2x4":
+        allowed = allowed | SEMANTIC_LAYOUT_TYPES
+        assert "Layout" in types, identifier
+        assert not types.intersection({"Row", "Column", "Stack"}), identifier
+    else:
+        assert not types.intersection(SEMANTIC_LAYOUT_TYPES), identifier
+    assert types.issubset(allowed), identifier
 
 
 @pytest.mark.parametrize(
@@ -488,7 +510,10 @@ def test_example_reaches_its_generation_route(
     for selected_id in set(selected).intersection(available_ids):
         assert selected_id in assembled
     if "adaptive" not in layout_scope:
-        assert f"### `{layout_scope}`" in assembled
+        if task_spec.size == "2x4":
+            assert f" {layout_scope}：" in assembled
+        else:
+            assert f"### `{layout_scope}`" in assembled
 
 
 def test_few_shot_switch_skips_document_loading(monkeypatch) -> None:

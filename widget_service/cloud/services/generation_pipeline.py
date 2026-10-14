@@ -165,12 +165,14 @@ class DesignCompactProcessor:
             source_dsl = repair_compact_dsl_safe_structure(
                 source_dsl,
                 size=context.size,
+                skip_compact_dsl_validation=context.skip_compact_dsl_validation,
             )
             safe_structure_repaired = source_dsl != original_source_dsl
             source_dsl = repair_compact_dsl_binding_paths(
                 source_dsl,
                 task_spec=context.task_spec,
                 card_spec=context.card_spec,
+                skip_compact_dsl_validation=context.skip_compact_dsl_validation,
             )
             expanded_source, layout_origins = expand_compact_semantic_layout(
                 source_dsl, size=context.size,
@@ -301,6 +303,7 @@ class DesignCompactProcessor:
                     source_dsl,
                     task_spec=context.task_spec,
                     card_spec=context.card_spec,
+                    compact_plan=context.compact_plan,
                     protocol_profile=design_protocol,
                     layout_scope=context.layout_scope,
                     enforce_model_component_types=True,
@@ -351,15 +354,13 @@ class DesignCompactProcessor:
                 },
             )
         else:
-            # Template output intentionally bypasses the general Compact DSL
-            # semantic rules. The converter keeps structural checks, and the
-            # generated artifact is still checked by ArtifactValidator.
+            # 跳过 Compact 专项校验，后续转换与 artifact 校验按原流程执行。
             validation_result = None
             trace_record(
                 "dsl.compact_validation.skipped",
                 stage="dsl.compactValidation",
                 status="skipped",
-                details={"reason": "template_source"},
+                details={"reason": "explicit_validation_skip"},
             )
 
         if plan_issues:
@@ -375,6 +376,7 @@ class DesignCompactProcessor:
                 source_dsl,
                 size=context.size,
                 protocol_profile=design_protocol,
+                skip_compact_dsl_validation=context.skip_compact_dsl_validation,
             )
             trace_step(
                 "dsl.conversion.completed",
