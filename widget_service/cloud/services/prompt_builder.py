@@ -2112,8 +2112,14 @@ class PromptBuilder:
             if runtime_prompt_context_enabled and isinstance(original_payload, dict):
                 recovery = original_payload.get("compositionRecovery")
             capacity_errors = []
+            missing_action = False
+            missing_fact = False
             for error in quality_errors:
                 message = error.get("message", "")
+                if message.startswith("Plan action is missing from visible DSL:"):
+                    missing_action = True
+                if message.startswith("Plan fact is missing from visible DSL:"):
+                    missing_fact = True
                 capacity_pattern = r"vertical layout requires|overflow|layout.*match|text width"
                 if re.search(capacity_pattern, message):
                     capacity_errors.append(message)
@@ -2155,6 +2161,21 @@ class PromptBuilder:
                     "有限搜索未给出完整解时仍按完整合同合组，不能沿用已失效的旧参考。"
                     "保留事实动作和字号，落实整个变体与横纵合组，"
                     "不要继续维持上一轮 Compact DSL 的超预算子树。"
+                )
+            elif task_spec is not None and task_spec.size == "2x4" and missing_action:
+                payload["instruction"] += (
+                    "动作覆盖失败时先核对按钮是否从 root 可达，不能仅新增孤立组件行。"
+                    "优先使用现有合法动作位；没有可用动作位时允许最小必要的 Region"
+                    "或父布局变更以保留全部 Action，不能冻结无法承载这些操作的布局。"
+                    "保留已正确的业务内容、绑定和对象归属，不因补按钮降级完整事件。"
+                )
+            elif task_spec is not None and task_spec.size == "2x4" and missing_fact:
+                payload["instruction"] += (
+                    "展示事实缺失时先恢复所属信息组，再核算补齐全部字段后的容量。"
+                    "原布局仅装入部分事实时合法，不代表补齐后仍合法；优先在原组合法合并"
+                    "短属性，必要时最小范围调整组件组合、Region或父布局。"
+                    "不把超过项目数的条目塞入单个辅助组件，不裁切、静态化或删除字段来补覆盖。"
+                    "已有正确事实、绑定和Action保持不变，不打散同级关系或混入无关对象。"
                 )
             elif not capacity_errors and not recompose_requested:
                 payload["instruction"] += (

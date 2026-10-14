@@ -79,6 +79,45 @@ def test_compact_region_variants_match_original_split_contract(variant: str) -> 
     assert match.layout_id == "W-split-panels"
 
 
+def test_region_child_count_feedback_reports_ordered_roles() -> None:
+    left = _region("left", "title-content-action")
+    left[0][3].append("extra")
+    rows = [["root", "Layout", {"layout": "W-split-panels"}, ["left", "right"]],
+            *left, _leaf("extra"), *_region("right", "center")]
+    with pytest.raises(CompactDslConversionError) as caught:
+        parse_compact_dsl_rows(_source(rows), size="2x4")
+    message = str(caught.value)
+    assert "expected child count [3], got 4" in message
+    assert "Region.variant='title-content-action'" in message
+    assert "requires children [title, content, PillButton]" in message
+    assert "do not edit expanded geometry" in message
+
+
+def test_parent_child_count_feedback_reports_content_and_two_fixed_slots() -> None:
+    rows = [["root", "Layout", {"layout": "W-content-side-slots"},
+             ["content", "upper", "lower", "extra"]],
+            *_region("content", "center"), _leaf("upper", "InfoBlock"),
+            _leaf("lower", "CardButton"), _leaf("extra", "CardButton")]
+    with pytest.raises(CompactDslConversionError) as caught:
+        parse_compact_dsl_rows(_source(rows), size="2x4")
+    message = str(caught.value)
+    assert "expected child count [3], got 4" in message
+    assert "[content Region, upper InfoBlock/CardButton, lower InfoBlock/CardButton]" in message
+
+
+def test_region_variant_feedback_reports_only_current_parent_options() -> None:
+    rows = [["root", "Layout", {"layout": "W-split-panels"}, ["left", "right"]],
+            *_region("left", "title-hero-support-action"), *_region("right", "center")]
+    with pytest.raises(CompactDslConversionError) as caught:
+        parse_compact_dsl_rows(_source(rows), size="2x4")
+    message = str(caught.value)
+    assert "got 'title-hero-support-action'" in message
+    options = message.split("compact Region variants: ", 1)[1]
+    assert "center, title-content, title-content-action, title-primary-details" in options
+    assert "title-two-ratios" not in options
+    assert "four-ratios" not in options
+
+
 @pytest.mark.parametrize("variant", ["center", "title-content", "title-primary-details",
                                      "title-content-action", "title-two-ratios",
                                      "title-hero-support-action", "four-ratios"])

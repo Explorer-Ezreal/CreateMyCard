@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from config.config import get_settings
+from models.generation import TaskSpec
 from services.compact_layout_runtime import layout_ids_for_size
 from services.compact_prompt_loader import (
     FRAGMENT,
@@ -15,6 +16,7 @@ from services.compact_prompt_loader import (
     assemble_prompts,
     read_prompt,
 )
+from services.prompt_builder import PromptBuilder
 from services.protocol_registry import (
     DESIGN_COMPACT_PROFILE_ID,
     A2UIProtocolRegistry,
@@ -94,6 +96,22 @@ def test_secondary_body_contract_groups_related_items() -> None:
 
     assert "同组有 2–4 项时必须使用一个 supporting 实例" in prompt
     assert "不得把三项拆成三个单项后再给每项声明 `12`" in prompt
+
+
+@pytest.mark.parametrize("size", ["2x2", "2x4"])
+def test_owned_action_layout_comparison_is_size_scoped_and_reaches_plan(size: str) -> None:
+    create = read_prompt(DEFAULT_SOURCE, "create", size=size)
+    rule = "先比较内容组与直属操作的归属，再比较操作数量"
+    task = TaskSpec(userQuery="查看设备状态及操作", size=size, dataModelSchema={"data": {}})
+    plan = read_prompt(DEFAULT_SOURCE, "plan", size=size)
+    messages = PromptBuilder().build_compact_plan(task, create + "\n\n" + plan, "{}")
+    system = messages[0].get("content")
+    assert isinstance(system, str)
+    assert (rule in create) == (size == "2x4")
+    assert (rule in system) == (size == "2x4")
+    assert "不只按操作数量选布局" in system
+    if size == "2x4":
+        assert "紧凑区容量不成立时仍比较其它合法布局，不强行分区" in system
 
 
 @pytest.mark.parametrize("size", ["2x2", "2x4"])

@@ -30,6 +30,34 @@ GEOMETRY_PROPS = frozenset({
 GENERATED_PREFIX = "__layout__"
 _BACKGROUND_PROPS = frozenset({"linearGradient", "backgroundColor", "backgroundImage"})
 
+# 有序角色只用于解释既有 count 门禁，不参与几何展开或案例选型。
+_CHILD_ROLES = {
+    "Layout": {
+        "W-top-bottom": "[title?, primary, details]",
+        "W-split-panels": "[left Region, right Region]",
+        "W-content-side-slots": (
+            "[content Region, upper InfoBlock/CardButton, lower InfoBlock/CardButton]"
+        ),
+        "W-four-slots": "[top-left slot, top-right slot, bottom-left slot, bottom-right slot]",
+    },
+    "Region": {
+        "center": "[content]",
+        "title-content": "[title, content]",
+        "title-primary-details": "[title, primary, details]",
+        "title-content-action": "[title, content, PillButton]",
+        "title-two-ratios": "[title, ProgressCircle, ProgressCircle, PillButton?]",
+        "title-hero-support-action": "[title, hero, support, PillButton]",
+        "four-ratios": "[ProgressCircle, ProgressCircle, ProgressCircle, ProgressCircle]",
+        "four-items": "[peer content, peer content, peer content, peer content]",
+    },
+    "Group": {
+        "hero-support": "[hero, support]",
+        "label-value": "[label, value]",
+        "peer-pair": "[peer content, peer content]",
+        "title-count": "[SingleLineTitle, Badge]",
+    },
+}
+
 
 @dataclass(frozen=True)
 class SemanticLayoutExpansion:
@@ -111,6 +139,12 @@ class _Compiler:
     def count(row: ComponentRow, allowed: set[int]) -> None:
         if len(row.children) not in allowed:
             message = f"expected child count {sorted(allowed)}, got {len(row.children)}"
+            key = "layout" if row.component_type == "Layout" else "variant"
+            name = row.props.get(key)
+            roles_by_name = _CHILD_ROLES.get(row.component_type, {})
+            roles = roles_by_name.get(name) if isinstance(name, str) else None
+            if roles is not None:
+                message += f"; {row.component_type}.{key}={name!r} requires children {roles}"
             _fail(row.component_id, message)
 
     def title(self, identifier: str) -> None:
@@ -199,7 +233,12 @@ class _Compiler:
         variant = row.props.get("variant")
         allowed = COMPACT_VARIANTS if compact else WIDE_VARIANTS
         if not isinstance(variant, str) or variant not in allowed:
-            _fail(identifier, "Region.variant is not supported in this parent area")
+            area = "compact" if compact else "wide"
+            message = (
+                f"Region.variant is not supported in this parent area (got {variant!r}); "
+                f"{area} Region variants: " + ", ".join(sorted(allowed))
+            )
+            _fail(identifier, message)
         expected = {"center": {1}, "title-content": {2}, "title-primary-details": {3},
                     "title-content-action": {3}, "title-two-ratios": {3, 4},
                     "title-hero-support-action": {4}, "four-ratios": {4}, "four-items": {4}}

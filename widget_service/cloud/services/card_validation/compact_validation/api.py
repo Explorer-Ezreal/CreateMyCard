@@ -150,7 +150,8 @@ def validate_compact_dsl(
     budget_components = normalize_mixed_font_text_rows(components, data_model=data_model)
     _collect_height_budget_errors(budget_components, task_spec, card_spec, errors, protocol_profile)
     _collect_text_width_budget_errors(
-        budget_components, task_spec, card_spec, errors, protocol_profile
+        budget_components, task_spec, card_spec, errors, protocol_profile,
+        include_label_pressure=(card_spec.get("suggestSize") or task_spec.get("size")) == "2x4",
     )
     for component in components:
         location = f"component {component.component_id}.props"
