@@ -56,4 +56,5 @@
 
 - 优化快照提交 b4dea9c；本地备份 codex/backup-pr522-casewise-before-main-20261014。
 - 重新核对时主仓增加 ca27f1f（仅耳机数据的蓝牙连接说明），继续合入，不回退素材与模板更新。
+- 合入 ca27f1f 后能力说明、语义转换、素材、Badge、Prompt 与 Few-shot 定向回归：325 passed。
 - 合并针对现有 PR 源分支，不直接写 InnovationTea/CreateMyCard 的 main。
