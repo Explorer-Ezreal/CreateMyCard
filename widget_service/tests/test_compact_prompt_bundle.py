@@ -187,6 +187,50 @@ def test_agent_stage_instruction_does_not_forbid_registered_semantic_layout() ->
     assert "不输出布局 ID、Card 或 Region 节点" not in scope
 
 
+def test_two_required_2x2_actions_use_the_fixed_dual_action_scope() -> None:
+    task = TaskSpec(
+        userQuery="显示剩余电量，并打开省电模式和导航回家",
+        size="2x2",
+        dataModelSchema={
+            "data": {
+                "phoneBattery": {
+                    "soc": {
+                        "type": "integer",
+                        "description": "剩余电量",
+                        "sampleValue": 68,
+                    }
+                }
+            }
+        },
+        eventCandidates=[
+            {
+                "id": "event.setPowerSavingMode",
+                "description": "打开省电模式",
+                "call": "setPowerSavingMode",
+                "args": {"enabled": True},
+            },
+            {
+                "id": "event.startNavigate",
+                "description": "导航回家",
+                "call": "startNavigate",
+                "args": {"destination": "home"},
+            },
+        ],
+    )
+
+    assert PromptBuilder.layout_scope(task) == "S-content-dual-action"
+    scope = PromptBuilder._compact_generation_scope(task)
+    assert "合法布局范围：S-content-dual-action" in scope
+    assert "生成、校验和修复共享的硬约束" in scope
+    assert "不增加 SingleLineTitle" in scope
+    assert "正文38、间距8、按钮36、间距8、按钮36" in scope
+    model_prompt = PromptBuilder().build_design_compact(task, "design rules")
+    system_content = model_prompt[0].get("content")
+    assert isinstance(system_content, str)
+    assert "合法布局范围：S-content-dual-action" in system_content
+    assert "不增加 SingleLineTitle" in system_content
+
+
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
 def test_plan_prompt_contains_only_incremental_contract(size: str) -> None:
     plan_prompt = read_prompt(DEFAULT_SOURCE, "plan", size=size)

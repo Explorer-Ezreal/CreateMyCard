@@ -54,6 +54,50 @@ def task_spec() -> dict:
     }
 
 
+def dual_action_task_spec() -> dict:
+    return {
+        "userQuery": "显示剩余电量，并打开省电模式和导航回家",
+        "size": "2x2",
+        "dataModelSchema": {
+            "data": {
+                "phoneBattery": {
+                    "soc": {
+                        "type": "integer",
+                        "description": "剩余电量",
+                        "sampleValue": 68,
+                    },
+                    "status": {
+                        "type": "string",
+                        "description": "充电状态",
+                        "sampleValue": "未充电",
+                    },
+                }
+            }
+        },
+        "eventCandidates": [
+            {
+                "id": "event.setPowerSavingMode",
+                "description": "打开省电模式",
+                "call": "clickToIntent",
+                "args": {
+                    "intentName": "SetSettingSwitch",
+                    "params": {
+                        "appBundleName": "com.huawei.hmos.settings",
+                        "itemName": "battery_saving_mode",
+                        "switchFlag": 0,
+                    },
+                },
+            },
+            {
+                "id": "event.startNavigate",
+                "description": "导航回家",
+                "call": "startNavigate",
+                "args": {"destination": "home"},
+            },
+        ],
+    }
+
+
 def plan_call() -> str:
     return json.dumps(
         {
@@ -503,6 +547,166 @@ def test_plan_tool_uses_task_paths_actions_and_size_contracts() -> None:
     assert "priority" in properties["info_required"]["items"]["required"]
     assert "composition" not in properties
     assert tool["function"]["parameters"]["required"] == ["info_required"]
+
+
+def test_dual_action_plan_tool_only_offers_the_unique_layout() -> None:
+    spec = dual_action_task_spec()
+    spec["assetCandidates"] = [
+        {"id": "asset.power", "src": "resources/power.svg"},
+        {"id": "asset.home", "src": "resources/home.svg"},
+        {"id": "asset.location", "src": "resources/location.svg"},
+    ]
+    tool = build_compact_plan_tool(
+        spec,
+        include_composition=True,
+        layout_scope="S-content-dual-action",
+    )
+    properties = tool["function"]["parameters"]["properties"]
+    layout_hints = properties["layoutHints"]
+
+    assert layout_hints["items"]["enum"] == ["S-content-dual-action"]
+    assert layout_hints["maxItems"] == 1
+    assert properties["composition"]["properties"]["layout"]["enum"] == [
+        "S-content-dual-action"
+    ]
+    title_assignment = properties["assetAssignments"]["properties"]["title"]
+    assert title_assignment["properties"]["assetId"] == {
+        "type": "null",
+        "enum": [None],
+        "description": "固定双动作布局没有标题槽，必须为 null。",
+    }
+
+
+def test_dual_action_plan_is_normalized_to_compact_content_and_pill_buttons() -> None:
+    payload = {
+        "name": "submit_card_plan",
+        "arguments": {
+            "info_required": [
+                {
+                    "requirement": "剩余电量",
+                    "priority": "must",
+                    "dataId": "/data/phoneBattery/soc",
+                    "componentHints": ["ProgressCircleSingle", "EmphasizedData"],
+                },
+                {
+                    "requirement": "充电状态",
+                    "priority": "should",
+                    "dataId": "/data/phoneBattery/status",
+                    "componentHints": ["SecondaryBody", "TableText"],
+                },
+                {
+                    "requirement": "打开省电模式",
+                    "priority": "must",
+                    "actionId": "event.setPowerSavingMode",
+                    "componentHints": ["CircleButton"],
+                },
+                {
+                    "requirement": "导航回家",
+                    "priority": "must",
+                    "actionId": "event.startNavigate",
+                    "componentHints": ["PillButton"],
+                },
+            ],
+            "layoutHints": ["S-title-content-action", "S-content-dual-action"],
+        },
+    }
+
+    result = parse_compact_plan_call(
+        json.dumps(payload, ensure_ascii=False),
+        dual_action_task_spec(),
+    )
+
+    assert result.plan["layoutHints"] == ["S-content-dual-action"]
+    facts = result.plan["info_required"]
+    assert facts[0]["componentHints"] == ["TableText"]
+    assert facts[1]["componentHints"] == ["TableText"]
+    assert facts[2]["componentHints"] == ["PillButton"]
+    assert facts[3]["componentHints"] == ["PillButton"]
+
+
+def test_dual_action_plan_discards_title_asset_without_a_title_slot() -> None:
+    spec = dual_action_task_spec()
+    spec["assetCandidates"] = [
+        {"id": "asset.power", "src": "resources/power.svg"},
+        {"id": "asset.home", "src": "resources/home.svg"},
+        {"id": "asset.location", "src": "resources/location.svg"},
+    ]
+    payload = {
+        "name": "submit_card_plan",
+        "arguments": {
+            "info_required": [
+                {
+                    "requirement": "剩余电量",
+                    "priority": "must",
+                    "dataId": "/data/phoneBattery/soc",
+                    "componentHints": ["EmphasisText"],
+                },
+                {
+                    "requirement": "打开省电模式",
+                    "priority": "must",
+                    "actionId": "event.setPowerSavingMode",
+                    "componentHints": ["PillButton"],
+                },
+                {
+                    "requirement": "导航回家",
+                    "priority": "must",
+                    "actionId": "event.startNavigate",
+                    "componentHints": ["PillButton"],
+                },
+            ],
+            "layoutHints": ["S-content-dual-action"],
+            "assetAssignments": {
+                "actions": [
+                    {
+                        "actionId": "event.setPowerSavingMode",
+                        "assetId": "asset.power",
+                    },
+                    {
+                        "actionId": "event.startNavigate",
+                        "assetId": "asset.home",
+                    },
+                ],
+                "title": {"assetId": "asset.location"},
+            },
+        },
+    }
+
+    result = parse_compact_plan_call(json.dumps(payload), spec)
+
+    assert result.plan["assetAssignments"]["title"] == {
+        "assetId": None,
+        "reason": "S-content-dual-action has no title slot.",
+    }
+
+
+def test_action_coverage_reports_exact_event_argument_mismatch() -> None:
+    spec = dual_action_task_spec()
+    plan = {
+        "info_required": [
+            {
+                "requirement": "打开省电模式",
+                "priority": "must",
+                "actionId": "event.setPowerSavingMode",
+                "componentHints": ["PillButton"],
+            }
+        ]
+    }
+    source = "\n".join(
+        [
+            '["root","Column",{},["power"]]',
+            '["power","PillButton",{"label":"打开省电模式","onClick":'
+            '[{"call":"clickToIntent","args":{"intentName":"SetSettingSwitch",'
+            '"params":{"appBundleName":"com.huawei.hmos.settings",'
+            '"itemName":"battery_saving_mode","switchFlag":1}}}]}]',
+        ]
+    )
+
+    errors = compact_plan_coverage_errors(source, plan, spec)
+
+    assert len(errors) == 1
+    assert '"switchFlag":0' in errors[0]
+    assert '"switchFlag":1' in errors[0]
+    assert "do not infer, invert, or rewrite parameter values" in errors[0]
 
 
 def test_plan_tool_requires_explicit_asset_assignments_for_candidates() -> None:

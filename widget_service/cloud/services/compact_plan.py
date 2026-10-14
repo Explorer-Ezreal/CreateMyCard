@@ -165,6 +165,7 @@ def build_compact_plan_tool(
     task_spec: dict[str, Any],
     *,
     include_composition: bool = False,
+    layout_scope: str | None = None,
 ) -> dict[str, Any]:
     """根据本次 TaskSpec 构造 submit_card_plan 的动态工具合同。"""
     size = task_spec.get("size")
@@ -233,6 +234,13 @@ def build_compact_plan_tool(
             "enum": action_ids,
             "description": "用户明确要求的真实事件候选 ID；该候选原有参数继续完整携带。",
         }
+    layout_hints = list(_layout_hints(size))
+    max_layout_hints = 2
+    layout_description = "至多两个父布局软候选，不冻结最终骨架。"
+    if size == "2x2" and layout_scope == "S-content-dual-action":
+        layout_hints = ["S-content-dual-action"]
+        max_layout_hints = 1
+        layout_description = "两个必要动作只能使用 S-content-dual-action。"
     plan_properties: dict[str, Any] = {
         "info_required": {
             "type": "array",
@@ -250,11 +258,11 @@ def build_compact_plan_tool(
             "type": "array",
             "items": {
                 "type": "string",
-                "enum": list(_layout_hints(size)),
+                "enum": layout_hints,
             },
-            "maxItems": 2,
+            "maxItems": max_layout_hints,
             "uniqueItems": True,
-            "description": "至多两个父布局软候选，不冻结最终骨架。",
+            "description": layout_description,
         },
     }
     required = ["info_required"]
@@ -272,6 +280,22 @@ def build_compact_plan_tool(
                 "description": "assetId 为 null 时说明没有选择图标的具体原因。",
             },
         }
+        title_assignment_properties = assignment_properties
+        title_assignment_description = (
+            "先完成动作图标分配，再从未使用素材中决定主 SingleLineTitle 图标。"
+        )
+        if size == "2x2" and layout_scope == "S-content-dual-action":
+            title_assignment_properties = {
+                "assetId": {
+                    "type": "null",
+                    "enum": [None],
+                    "description": "固定双动作布局没有标题槽，必须为 null。",
+                },
+                "reason": assignment_properties["reason"],
+            }
+            title_assignment_description = (
+                "S-content-dual-action 没有标题槽；剩余素材不分配给标题。"
+            )
         plan_properties["assetAssignments"] = {
             "type": "object",
             "properties": {
@@ -294,21 +318,25 @@ def build_compact_plan_tool(
                 },
                 "title": {
                     "type": "object",
-                    "properties": assignment_properties,
+                    "properties": title_assignment_properties,
                     "required": ["assetId"],
                     "additionalProperties": False,
-                    "description": (
-                        "先完成动作图标分配，再从未使用素材中决定主 SingleLineTitle 图标。"
-                    ),
+                    "description": title_assignment_description,
                 },
             },
             "required": ["actions", "title"],
             "additionalProperties": False,
         }
         required.append("assetAssignments")
-        description += "存在素材候选时，同时提交按钮优先、标题随后且不复用的素材分配。"
+        if size == "2x2" and layout_scope == "S-content-dual-action":
+            description += "存在素材候选时，优先分配给两个按钮；剩余素材不分配给标题。"
+        else:
+            description += "存在素材候选时，同时提交按钮优先、标题随后且不复用的素材分配。"
     if include_composition:
-        plan_properties["composition"] = _composition_tool_schema(size)
+        plan_properties["composition"] = _composition_tool_schema(
+            size,
+            layout_scope=layout_scope,
+        )
         required.append("composition")
         description += "同时提交可完整承载这些事实的分区、组件合组和容量计划。"
     return {
@@ -326,7 +354,11 @@ def build_compact_plan_tool(
     }
 
 
-def _composition_tool_schema(size: Any) -> dict[str, Any]:
+def _composition_tool_schema(
+    size: Any,
+    *,
+    layout_scope: str | None = None,
+) -> dict[str, Any]:
     """实例级实现计划；事实仍由 info_required 独立确定。"""
     integer = {"type": "integer", "minimum": 0, "maximum": 23}
     extent = {"type": "number", "minimum": 0}
@@ -367,10 +399,13 @@ def _composition_tool_schema(size: Any) -> dict[str, Any]:
         "required": ["id", "path", "referenceWidth", "referenceHeight", "gap", "groups"],
         "additionalProperties": False,
     }
+    composition_layouts = list(_layout_hints(size))
+    if size == "2x2" and layout_scope == "S-content-dual-action":
+        composition_layouts = ["S-content-dual-action"]
     return {
         "type": "object",
         "properties": {
-            "layout": {"type": "string", "enum": list(_layout_hints(size))},
+            "layout": {"type": "string", "enum": composition_layouts},
             "variant": {"type": "integer", "minimum": 1},
             "regions": {"type": "array", "items": region, "minItems": 1, "maxItems": 8},
         },
@@ -756,6 +791,12 @@ def parse_compact_plan_call(
         task_spec.get("size"),
     )
     warnings.extend(layout_warnings)
+    layout_hints, dual_action_warnings = _normalize_dual_action_plan(
+        facts,
+        layout_hints,
+        task_spec.get("size"),
+    )
+    warnings.extend(dual_action_warnings)
     if layout_hints:
         plan["layoutHints"] = layout_hints
     composition = None
@@ -953,6 +994,7 @@ def compact_plan_context(
         if implementation_conflicts is None else implementation_conflicts
     )
     context_plan = dict(plan)
+    fixed_dual_action = plan.get("layoutHints") == ["S-content-dual-action"]
     if conflicts:
         context_plan.pop("composition", None)
         context_plan["compositionNotes"] = conflicts
@@ -1009,13 +1051,18 @@ def compact_plan_context(
             "参考预算不代替标签与单位的核算；明确发现参考方案仍不成立时才整体重组。\n\n"
             f"```json\n{payload}\n```"
         )
+    layout_instruction = (
+        "本轮两个必要动作使 S-content-dual-action 成为固定布局，不得改选带标题或单动作布局。"
+        if fixed_dual_action
+        else "componentHints 与 layoutHints 不冻结组件实例或最终骨架，但不能无理由忽略。"
+    )
     return (
         "# 已接受的 Compact Info Plan\n\n"
         "以下 Plan 冻结 must/should 信息、静态正文和操作；正常生成与修复都必须完整展示两种优先级，"
         "只有微服务明确进入 drop_optional_component 最终兜底时，"
         "才允许省略程序指定的非 Action 事实。"
         "除标题组件职责外，"
-        "componentHints 与 layoutHints 不冻结组件实例或最终骨架，但不能无理由忽略。"
+        f"{layout_instruction}"
         "当 composition 已选中且合同、容量均成立时，它是本轮的执行选择；尤其"
         "S-title-anchor 不能仅因存在 PillButton 就被降级替换为底部文字动作布局。"
         f"{preference_instruction}先按对象和信息关系合组，再映射可见 Prop。"
@@ -1169,9 +1216,11 @@ def _compact_fact_coverage_result(
     if isinstance(action_id, str):
         expected = event_handlers.get(action_id)
         if expected is None or expected not in state.handlers:
+            mismatch = _event_handler_mismatch(expected, state.handlers)
             return CompactPlanCoverageResult(
                 errors=(
-                    f"Plan action is missing from visible DSL: {label} ({action_id}).",
+                    f"Plan action is missing from visible DSL: {label} ({action_id})."
+                    f"{mismatch}",
                 ),
                 warnings=(),
             )
@@ -1497,13 +1546,19 @@ def _normalize_asset_assignments(
         if unknown_keys:
             names = ", ".join(sorted(unknown_keys))
             errors.append(f"assetAssignments.title contains unsupported fields: {names}.")
-        normalized_title = _normalize_single_asset_assignment(
-            title,
-            asset_ids,
-            location="assetAssignments.title",
-            used_assets=used_assets,
-            errors=errors,
-        )
+        if _is_two_by_two_dual_action_plan(facts, task_spec.get("size")):
+            normalized_title = {
+                "assetId": None,
+                "reason": "S-content-dual-action has no title slot.",
+            }
+        else:
+            normalized_title = _normalize_single_asset_assignment(
+                title,
+                asset_ids,
+                location="assetAssignments.title",
+                used_assets=used_assets,
+                errors=errors,
+            )
     if errors:
         raise CompactPlanValidationError(errors)
     ordered_actions = [normalized_actions[action_id] for action_id in selected_action_ids]
@@ -1746,6 +1801,55 @@ def _normalize_layout_hints(
     return accepted, warnings
 
 
+def _normalize_dual_action_plan(
+    facts: list[dict[str, Any]],
+    layout_hints: list[str],
+    size: Any,
+) -> tuple[list[str], list[str]]:
+    """将 2x2 双必要动作计划收敛到唯一可承载的布局与组件。"""
+    if not _is_two_by_two_dual_action_plan(facts, size):
+        return layout_hints, []
+
+    warnings: list[str] = []
+    normalized_layouts = ["S-content-dual-action"]
+    if layout_hints != normalized_layouts:
+        warnings.append(
+            "Two required 2x2 actions force layoutHints to S-content-dual-action."
+        )
+
+    content_facts = [fact for fact in facts if "actionId" not in fact]
+    fallback_component = "TableText" if len(content_facts) >= 2 else "EmphasisText"
+    for fact in facts:
+        hints = fact.get("componentHints")
+        if "actionId" in fact:
+            if hints != ["PillButton"]:
+                fact["componentHints"] = ["PillButton"]
+                warnings.append(
+                    "A 2x2 dual-action fact uses PillButton in S-content-dual-action."
+                )
+            continue
+        accepted = [fallback_component]
+        if accepted != hints:
+            fact["componentHints"] = accepted
+            warnings.append(
+                "A 2x2 dual-action content fact was limited to compact 38vp components."
+            )
+    return normalized_layouts, warnings
+
+
+def _is_two_by_two_dual_action_plan(
+    facts: list[dict[str, Any]],
+    size: Any,
+) -> bool:
+    if size != "2x2":
+        return False
+    action_count = 0
+    for fact in facts:
+        if isinstance(fact.get("actionId"), str):
+            action_count += 1
+    return action_count == 2
+
+
 def _parse_json_object(
     raw_output: str, warnings: list[str] | None = None,
 ) -> dict[str, Any]:
@@ -1930,6 +2034,38 @@ def _event_handlers_by_id(task_spec: dict[str, Any]) -> dict[str, dict[str, Any]
         ):
             handlers[identifier] = {"call": call, "args": args}
     return handlers
+
+
+def _event_handler_mismatch(
+    expected: dict[str, Any] | None,
+    actual_handlers: tuple[dict[str, Any], ...],
+) -> str:
+    """向修复模型说明同类事件的精确参数差异，避免按常识改写值。"""
+    if expected is None:
+        return ""
+    expected_call = expected.get("call")
+    expected_args = expected.get("args")
+    expected_intent = None
+    if isinstance(expected_args, dict):
+        expected_intent = expected_args.get("intentName")
+    closest = None
+    for handler in actual_handlers:
+        if handler.get("call") != expected_call:
+            continue
+        if closest is None:
+            closest = handler
+        handler_args = handler.get("args")
+        if isinstance(handler_args, dict) and handler_args.get("intentName") == expected_intent:
+            closest = handler
+            break
+    if closest is None:
+        return " Copy the complete call and args from the matching TaskSpec event candidate."
+    expected_text = json.dumps(expected, ensure_ascii=False, separators=(",", ":"))
+    actual_text = json.dumps(closest, ensure_ascii=False, separators=(",", ":"))
+    return (
+        f" Expected exact onClick handler {expected_text}, but found {actual_text}."
+        " Copy call and args exactly; do not infer, invert, or rewrite parameter values."
+    )
 
 
 def _component_hints(size: Any) -> tuple[str, ...]:
