@@ -1,15 +1,15 @@
-"""宽卡辅助文本的标签和值共享同一行宽度；不删除标签或改写数据。"""
+"""宽卡辅助文本按完整标签和值自适应排版；不删除标签或改写数据。"""
 
 import json
 
 import pytest
 
-from services.card_validation import CompactDslValidationError, validate_compact_dsl
+from services.card_validation import validate_compact_dsl
 
 
 @pytest.mark.parametrize("label", [None, "记录时间"])
 @pytest.mark.parametrize("max_lines", [1, 2])
-def test_wide_supporting_text_includes_static_label_in_single_line_budget(
+def test_wide_supporting_text_adapts_complete_label_and_value_before_budget(
     label: str | None, max_lines: int,
 ) -> None:
     item = {"value": {"path": "/data/recordedAt"}, "maxLines": max_lines}
@@ -31,13 +31,7 @@ def test_wide_supporting_text_includes_static_label_in_single_line_budget(
     task = {"size": "2x4", "dataModelSchema": {"data": {"recordedAt": {
         "type": "string", "description": "记录时间", "sampleValue": "2027-04-12 18:30",
     }}}}
-    if label and max_lines == 1:
-        with pytest.raises(CompactDslValidationError) as caught:
-            validate_compact_dsl(source, task_spec=task, card_spec={})
-        assert any("complete label '记录时间'" in error for error in caught.value.errors)
-        assert any("2027-04-12 18:30" in error for error in caught.value.errors)
-    else:
-        validate_compact_dsl(source, task_spec=task, card_spec={})
+    validate_compact_dsl(source, task_spec=task, card_spec={})
 
 
 def test_small_card_publishing_does_not_enable_extra_regular_label_pressure() -> None:
