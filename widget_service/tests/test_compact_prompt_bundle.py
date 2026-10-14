@@ -153,6 +153,8 @@ def test_secondary_body_contract_groups_related_items() -> None:
     assert "多个短字段按原顺序放入一个实例" in prompt
     assert "两项同行用 14；两项 `columns:1` 分行用 12" in prompt
     assert "标题、按钮、布局容器和其它 `SecondaryBody` 都不满足搭配条件" in prompt
+    assert "刷新元数据默认不展示" in prompt
+    assert "不得为了填空单独创建 `SecondaryBody`" in prompt
 
 
 def test_secondary_body_repair_does_not_add_non_core_companions() -> None:
@@ -168,6 +170,9 @@ def test_plan_prompt_contains_only_incremental_contract(size: str) -> None:
 
     assert "# Compact Info Plan" in plan_prompt
     assert "submit_card_plan" in plan_prompt
+    assert "刷新元数据默认不进入" in plan_prompt
+    assert "`EmphasisText`" in plan_prompt
+    assert "`secondaryText`" in plan_prompt
     assert "你是 HarmonyOS 桌面卡片极简协议 DSL 生成模型" not in plan_prompt
     assert "## 1. 组件总表" not in plan_prompt
     assert "## 2x2 组件选型" not in plan_prompt

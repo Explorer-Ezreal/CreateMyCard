@@ -38,6 +38,24 @@ _FACT_KEYS = frozenset(
 )
 _TARGET_KEYS = ("dataId", "actionId", "text")
 _FACT_PRIORITIES = frozenset({"must", "should"})
+_FRESHNESS_METADATA_NAMES = frozenset(
+    {
+        "lastrefreshedat",
+        "lastrefreshtime",
+        "lastsyncedat",
+        "lastsynctime",
+        "lastupdatedat",
+        "lastupdatetime",
+        "refreshedat",
+        "refreshtime",
+        "updatedat",
+        "updatetime",
+    }
+)
+_FRESHNESS_REQUEST = re.compile(
+    r"更新时间|更新于|最后更新|上次更新|刷新时间|最后刷新|同步时间|最后同步|"
+    r"数据.{0,4}(?:新鲜|时效|过期)"
+)
 _SHARED_FACT_COMPONENTS = (
     "SingleLineTitle",
     "DoubleLineTitle",
@@ -203,7 +221,11 @@ def build_compact_plan_tool(
         properties["dataId"] = {
             "type": "string",
             "enum": data_paths,
-            "description": "必须在卡面展示的动态信息的真实 JSON Pointer；仅用于事件传参时不选。",
+            "description": (
+                "必须在卡面展示的动态信息的真实 JSON Pointer；仅用于事件传参时不选。"
+                "updatedAt、refreshTime 等刷新元数据默认不选；仅在用户明确要求、时效本身"
+                "影响用途，或无动作且只有一个短文本核心信息导致卡面明显稀疏时选择。"
+            ),
         }
     if action_ids:
         properties["actionId"] = {
@@ -766,6 +788,9 @@ def parse_compact_plan_call(
     secondary_body_errors = _secondary_body_composition_errors(composition)
     if secondary_body_errors:
         raise CompactPlanValidationError(secondary_body_errors)
+    freshness_errors = _freshness_metadata_plan_errors(facts, composition, task_spec)
+    if freshness_errors:
+        raise CompactPlanValidationError(freshness_errors)
     warnings.extend(composition_warnings)
     duration_paths = set(compound_duration_bindings(plan, task_spec))
     for fact in facts:
@@ -805,6 +830,117 @@ def parse_compact_plan_call(
     if composition_warnings:
         plan["compositionNotes"] = composition_warnings
     return CompactPlanValidationResult(plan=plan, warnings=tuple(warnings))
+
+
+def _freshness_metadata_plan_errors(
+    facts: list[dict[str, Any]],
+    composition: dict[str, Any] | None,
+    task_spec: dict[str, Any],
+) -> list[str]:
+    """限制刷新元数据只在明确请求或单短文本稀疏卡中展示。"""
+
+    freshness_indexes = [
+        index for index, fact in enumerate(facts) if _is_freshness_metadata_fact(fact)
+    ]
+    if not freshness_indexes:
+        return []
+    query = task_spec.get("userQuery")
+    if isinstance(query, str) and _FRESHNESS_REQUEST.search(query):
+        return []
+    action_indexes = [
+        index for index, fact in enumerate(facts) if isinstance(fact.get("actionId"), str)
+    ]
+    content_indexes: list[int] = []
+    for index, fact in enumerate(facts):
+        if index in freshness_indexes or index in action_indexes:
+            continue
+        if _is_title_fact(fact):
+            continue
+        content_indexes.append(index)
+    sparse = (
+        len(freshness_indexes) == 1
+        and not action_indexes
+        and len(content_indexes) == 1
+    )
+    freshness_index = freshness_indexes[0]
+    freshness_fact = facts[freshness_index]
+    if not sparse:
+        return [
+            "Freshness metadata is not a normal display fact. Remove updatedAt/refreshTime "
+            "unless the user explicitly requests freshness or the card has no action and "
+            "only one short text core fact."
+        ]
+    core_index = content_indexes[0]
+    core_fact = facts[core_index]
+    core_hints = core_fact.get("componentHints")
+    freshness_hints = freshness_fact.get("componentHints")
+    short_text_core = isinstance(core_hints, list) and core_hints[:1] == ["EmphasisText"]
+    grouped_hint = (
+        isinstance(freshness_hints, list)
+        and freshness_hints[:1] == ["EmphasisText"]
+    )
+    if not short_text_core or not grouped_hint:
+        return [
+            "Sparse-card freshness metadata must be grouped into the single short text core: "
+            "use EmphasisText for both the core fact and updatedAt/refreshTime, with the "
+            "freshness value assigned to secondaryText; do not create a standalone "
+            "SecondaryBody region."
+        ]
+    errors: list[str] = []
+    if freshness_fact.get("priority") != "should":
+        errors.append(
+            "Unrequested freshness metadata is optional filler and must use priority should."
+        )
+    if composition is not None and not _composition_groups_freshness_with_core(
+        composition,
+        core_index,
+        freshness_index,
+    ):
+        errors.append(
+            "Sparse-card freshness metadata must share one EmphasisText group with the core "
+            "fact and use secondaryText; do not allocate a separate region or component."
+        )
+    return errors
+
+
+def _is_freshness_metadata_fact(fact: dict[str, Any]) -> bool:
+    path = fact.get("dataId")
+    if not isinstance(path, str):
+        return False
+    leaf = path.rsplit("/", maxsplit=1)[-1]
+    normalized = re.sub(r"[^a-z0-9]", "", leaf.lower())
+    return normalized in _FRESHNESS_METADATA_NAMES
+
+
+def _is_title_fact(fact: dict[str, Any]) -> bool:
+    hints = fact.get("componentHints")
+    return isinstance(hints, list) and hints[:1] in (
+        ["SingleLineTitle"],
+        ["DoubleLineTitle"],
+    )
+
+
+def _composition_groups_freshness_with_core(
+    composition: dict[str, Any],
+    core_index: int,
+    freshness_index: int,
+) -> bool:
+    for region in composition.get("regions", []):
+        if not isinstance(region, dict):
+            continue
+        for group in region.get("groups", []):
+            if not isinstance(group, dict) or group.get("component") != "EmphasisText":
+                continue
+            indexes = group.get("factIndexes")
+            placements = group.get("placements")
+            if not isinstance(indexes, list) or not isinstance(placements, list):
+                continue
+            paired = list(zip(indexes, placements, strict=False))
+            has_core = (core_index, "mainText") in paired
+            has_freshness = (freshness_index, "secondaryText") in paired
+            if has_core and has_freshness:
+                return True
+    return False
 
 
 def compact_plan_context(

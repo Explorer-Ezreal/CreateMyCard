@@ -83,6 +83,215 @@ def plan_call() -> str:
     )
 
 
+def freshness_task_spec(user_query: str = "显示天气预警") -> dict:
+    return {
+        "userQuery": user_query,
+        "size": "2x2",
+        "dataModelSchema": {
+            "data": {
+                "weather": {
+                    "current": {
+                        "alertLevel": {
+                            "type": "string",
+                            "description": "天气预警等级",
+                            "sampleValue": "大风蓝色预警",
+                        },
+                        "condition": {
+                            "type": "string",
+                            "description": "当前天气状态",
+                            "sampleValue": "多云",
+                        },
+                    },
+                    "updatedAt": {
+                        "type": "string",
+                        "description": "数据更新时间",
+                        "sampleValue": "2026-08-06 09:00",
+                    },
+                }
+            }
+        },
+        "eventCandidates": [],
+    }
+
+
+def freshness_plan_call(
+    *,
+    include_condition: bool = False,
+    freshness_component: str = "EmphasisText",
+    freshness_priority: str = "should",
+    composition_groups: list[dict] | None = None,
+) -> str:
+    facts = [
+        {
+            "requirement": "天气预警等级",
+            "priority": "must",
+            "dataId": "/data/weather/current/alertLevel",
+            "componentHints": ["EmphasisText"],
+        }
+    ]
+    if include_condition:
+        facts.append(
+            {
+                "requirement": "当前天气状态",
+                "priority": "should",
+                "dataId": "/data/weather/current/condition",
+                "componentHints": ["EmphasisText"],
+            }
+        )
+    facts.append(
+        {
+            "requirement": "数据更新时间",
+            "priority": freshness_priority,
+            "dataId": "/data/weather/updatedAt",
+            "componentHints": [freshness_component],
+        }
+    )
+    arguments: dict = {
+        "info_required": facts,
+        "layoutHints": ["S-title-content"],
+    }
+    if composition_groups is not None:
+        arguments["composition"] = {
+            "layout": "S-title-content",
+            "variant": 1,
+            "regions": [
+                {
+                    "id": "title",
+                    "path": [0],
+                    "referenceWidth": 126,
+                    "referenceHeight": 20,
+                    "gap": 0,
+                    "groups": [
+                        {
+                            "component": "SingleLineTitle",
+                            "factIndexes": [],
+                            "placements": [],
+                            "referenceHeight": 20,
+                        }
+                    ],
+                },
+                {
+                    "id": "content",
+                    "path": [1],
+                    "referenceWidth": 126,
+                    "referenceHeight": 108,
+                    "gap": 2,
+                    "groups": composition_groups,
+                },
+            ],
+        }
+    return json.dumps(
+        {"name": "submit_card_plan", "arguments": arguments},
+        ensure_ascii=False,
+    )
+
+
+def test_unrequested_freshness_metadata_is_rejected_for_non_sparse_card() -> None:
+    with pytest.raises(
+        CompactPlanValidationError,
+        match="Freshness metadata is not a normal display fact",
+    ):
+        parse_compact_plan_call(
+            freshness_plan_call(include_condition=True),
+            freshness_task_spec(),
+        )
+
+
+def test_sparse_card_accepts_freshness_as_optional_emphasis_support() -> None:
+    result = parse_compact_plan_call(
+        freshness_plan_call(),
+        freshness_task_spec(),
+    )
+
+    facts = result.plan.get("info_required")
+    assert isinstance(facts, list)
+    assert facts[1].get("priority") == "should"
+    assert facts[1].get("componentHints") == ["EmphasisText"]
+
+
+def test_sparse_card_rejects_standalone_secondary_body_freshness() -> None:
+    with pytest.raises(
+        CompactPlanValidationError,
+        match="must be grouped into the single short text core",
+    ):
+        parse_compact_plan_call(
+            freshness_plan_call(freshness_component="SecondaryBody"),
+            freshness_task_spec(),
+        )
+
+
+def test_sparse_card_rejects_required_freshness_filler() -> None:
+    with pytest.raises(
+        CompactPlanValidationError,
+        match="must use priority should",
+    ):
+        parse_compact_plan_call(
+            freshness_plan_call(freshness_priority="must"),
+            freshness_task_spec(),
+        )
+
+
+def test_explicit_freshness_request_allows_rich_card() -> None:
+    result = parse_compact_plan_call(
+        freshness_plan_call(
+            include_condition=True,
+            freshness_component="SecondaryBody",
+            freshness_priority="must",
+        ),
+        freshness_task_spec("显示天气预警、当前天气和更新时间"),
+    )
+
+    facts = result.plan.get("info_required")
+    assert isinstance(facts, list)
+    assert len(facts) == 3
+
+
+def test_sparse_card_composition_groups_freshness_with_core() -> None:
+    result = parse_compact_plan_call(
+        freshness_plan_call(
+            composition_groups=[
+                {
+                    "component": "EmphasisText",
+                    "factIndexes": [0, 1],
+                    "placements": ["mainText", "secondaryText"],
+                    "referenceHeight": 42,
+                }
+            ]
+        ),
+        freshness_task_spec(),
+        require_composition=True,
+    )
+
+    assert result.plan.get("composition") is not None
+
+
+def test_sparse_card_composition_rejects_separate_freshness_group() -> None:
+    with pytest.raises(
+        CompactPlanValidationError,
+        match="must share one EmphasisText group",
+    ):
+        parse_compact_plan_call(
+            freshness_plan_call(
+                composition_groups=[
+                    {
+                        "component": "EmphasisText",
+                        "factIndexes": [0],
+                        "placements": ["mainText"],
+                        "referenceHeight": 24,
+                    },
+                    {
+                        "component": "EmphasisText",
+                        "factIndexes": [1],
+                        "placements": ["secondaryText"],
+                        "referenceHeight": 24,
+                    },
+                ]
+            ),
+            freshness_task_spec(),
+            require_composition=True,
+        )
+
+
 def test_anchor_hint_rejects_title_plus_single_body_fact() -> None:
     payload = json.loads(plan_call())
     payload["arguments"]["info_required"][0]["componentHints"] = ["SingleLineTitle"]
