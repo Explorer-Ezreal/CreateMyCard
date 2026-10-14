@@ -1061,7 +1061,7 @@ def test_design_prompt_contains_root_height_hard_gate_examples() -> None:
     assert "63 + 8 + 63 = 134vp" in prompt
     assert "59 + 40 + 36 + 8 × 2 = 151vp" in prompt
     assert "itemMargin 不生效" not in prompt
-    assert "两者可以同时设置" in prompt
+    assert "两种尺寸固定几何均由语义模板决定" in prompt
 
 
 def _centered_single_value_hero_task_spec(sample_value: int) -> dict:

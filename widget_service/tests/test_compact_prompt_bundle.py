@@ -94,7 +94,7 @@ def test_info_block_contract_is_noninteractive() -> None:
     assert progress_example in create_prompt
     assert "不使用 `dataIds` 或" in create_prompt
     assert "`S-title-dual-content` 的两个 `126×50vp` 槽" in create_prompt
-    assert '"height":50,"primaryText":"{{ \'明天 \' +' in create_prompt
+    assert '"variant":"stacked","primaryText":"{{ \'明天 \' +' in create_prompt
     assert "每行只承载一个动态业务值" in create_prompt
 
 
@@ -233,7 +233,7 @@ def test_core_does_not_repeat_final_prohibition_checklist() -> None:
     )
 
 
-def test_two_by_two_layout_prompt_delegates_derived_sizes_to_flex_layout() -> None:
+def test_two_by_two_layout_prompt_delegates_geometry_to_semantic_templates() -> None:
     source = (DEFAULT_SOURCE / "layouts/2x2.md").read_text(encoding="utf-8")
     layouts = dict(FRAGMENT.findall(source)).get("s-layouts", "")
 
@@ -251,12 +251,12 @@ def test_two_by_two_layout_prompt_delegates_derived_sizes_to_flex_layout() -> No
         assert removed_budget not in layouts
 
     for retained_contract in (
-        "`padding:12`",
-        "`padding:8`",
-        "`layoutWeight`",
-        "动作按钮固定高 `36vp`",
-        "固定 `40×40vp` 槽",
-        '"alignContent":"center"',
+        "Layout是root",
+        "不输出Row/Column/Stack",
+        "padding8",
+        "40×40槽居中",
+        "按钮36vp",
+        '"Layout"',
     ):
         assert retained_contract in layouts
 
@@ -371,7 +371,7 @@ def test_common_component_contract_separates_shared_and_size_specific_rules() ->
         "### `CardButton`",
     ):
         assert dedicated_heading not in catalog
-    assert "`width`、`height`、`layoutWeight`、`flexShrink`、`margin`" in catalog
+    assert "新语义源不填写width、height、layoutWeight、flexShrink、margin" in catalog
     assert "fontColor" not in selection
     assert "fontColor" not in catalog
     assert "组件不声明文字颜色" in catalog

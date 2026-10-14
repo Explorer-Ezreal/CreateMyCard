@@ -32,9 +32,9 @@ def test_action_coverage_can_restore_legal_reachable_slot_without_global_freeze(
     feedback = _repair_feedback(messages)
     instruction = feedback.get("instruction")
     assert isinstance(instruction, str)
-    if size == "2x4" and missing_action:
+    if missing_action:
         assert "不能仅新增孤立组件行" in instruction
-        assert "最小必要的 Region" in instruction
+        assert "最小必要的语义组合" in instruction
         assert "本次没有布局或容量错误" not in instruction
     else:
         assert "保持待修树的合法布局" in instruction
@@ -52,12 +52,9 @@ def test_missing_display_fact_rechecks_completed_group_capacity(size: str) -> No
     feedback = _repair_feedback(messages)
     instruction = feedback.get("instruction")
     assert isinstance(instruction, str)
-    if size == "2x4":
-        assert "补齐全部字段后的容量" in instruction
-        assert "不把超过项目数的条目塞入单个辅助组件" in instruction
-        assert "本次没有布局或容量错误" not in instruction
-    else:
-        assert "保持待修树的合法布局" in instruction
+    assert "补齐全部字段后的容量" in instruction
+    assert "不把超过项目数的条目塞入单个辅助组件" in instruction
+    assert "本次没有布局或容量错误" not in instruction
     assert feedback.get("qualityErrors") == errors
 
 

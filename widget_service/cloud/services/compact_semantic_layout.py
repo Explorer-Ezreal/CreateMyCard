@@ -1,4 +1,4 @@
-"""2×4 语义布局展开；固定几何由模板拥有，原业务行和绑定不改写。"""
+"""按卡片尺寸展开语义布局；固定几何由模板拥有，业务行和绑定不改写。"""
 
 from __future__ import annotations
 
@@ -30,6 +30,18 @@ GEOMETRY_PROPS = frozenset({
 })
 GENERATED_PREFIX = "__layout__"
 _BACKGROUND_PROPS = frozenset({"linearGradient", "backgroundColor", "backgroundImage"})
+SMALL_CHILD_ROLES = {
+    "S-center": (1, "[content]"),
+    "S-title-content": (2, "[title, content]"),
+    "S-title-dual-content": (3, "[title, primary, support]"),
+    "S-quad-content": (4, "[top-left, top-right, bottom-left, bottom-right]"),
+    "S-title-content-action": (3, "[title, content, PillButton]"),
+    "S-title-primary-secondary-action": (4, "[title, primary, support, PillButton]"),
+    "S-title-dual-column-action": (3, "[title, ProgressCircle, ProgressCircle, PillButton?]"),
+    "S-title-anchor": (4, "[title, primary, support, CircleButton]"),
+    "S-content-dual-action": (3, "[content, PillButton, PillButton]"),
+    "S-dual-info": (2, "[InfoBlock, InfoBlock]"),
+}
 
 # 有序角色只用于解释既有 count 门禁，不参与几何展开或案例选型。
 _CHILD_ROLES = {
@@ -87,6 +99,8 @@ def _prop_fail(identifier: str, message: str) -> NoReturn:
 
 
 class _Compiler:
+    size = "2x4"
+
     def __init__(self, rows: list[CompactRow] | tuple[CompactRow, ...]) -> None:
         self.source = rows
         self.by_id = {}
@@ -315,7 +329,6 @@ class _Compiler:
             cells.append(cell)
             if self.node(child).component_type == "ProgressCircle":
                 self.ratio_cells[child] = cell
-        identifier = self.generated(origin, "ratios")
         rows = []
         for index in range(2 if grid else 1):
             pair = tuple(cells[index * 2:index * 2 + 2])
@@ -324,6 +337,9 @@ class _Compiler:
                                      "alignItems": "center", "justifyContent": "center",
                                      "layoutWeight": 1}, pair, origin)
             rows.append(row_id)
+        if not grid and self.size == "2x2":
+            return rows[0]
+        identifier = self.generated(origin, "ratios")
         self.add(identifier, "Column", {"width": "matchParent", "itemMargin": 8,
                                         "layoutWeight": 1}, tuple(rows), origin)
         return identifier
@@ -342,12 +358,14 @@ class _Compiler:
                 if row.component_type == "SingleLineTitle" and row.props.get("icon"):
                     variant = "withIcon"
                 _, recipe_styles = visual_recipe_part(
-                    row.component_type, "root", size="2x4", variant=variant,
+                    row.component_type, "root", size=self.size, variant=variant,
                 )
                 styles = {**recipe_styles, **styles}
                 if row.component_type == "DoubleLineTitle":
-                    _, title_styles = visual_recipe_part("DoubleLineTitle", "title", size="2x4")
-                    _, secondary = visual_recipe_part("DoubleLineTitle", "secondary", size="2x4")
+                    _, title_styles = visual_recipe_part("DoubleLineTitle", "title", size=self.size)
+                    _, secondary = visual_recipe_part(
+                        "DoubleLineTitle", "secondary", size=self.size,
+                    )
                     constraint = secondary.get("constraintSize")
                     secondary_height = None
                     if isinstance(constraint, dict):
@@ -361,7 +379,7 @@ class _Compiler:
                     styles["height"] = title_height + secondary_height + gap
             nodes.append({"id": row.component_id, "component": row.component_type,
                           "styles": styles, "children": list(row.children)})
-        boxes = reference_region_boxes(nodes, size="2x4")
+        boxes = reference_region_boxes(nodes, size=self.size)
         resolved = []
         for row in self.result:
             cell_id = self.ratio_cells.get(row.component_id)
@@ -505,6 +523,9 @@ class _Compiler:
                 row_ids.append(row_id)
             children = tuple(row_ids)
         self.add("root", kind, props, children, "root")
+        return self.finish(layout)
+
+    def finish(self, layout: str) -> SemanticLayoutExpansion:
         self.inject_ratio_geometry()
         compiled = {row.component_id for row in self.result}
         missing = set(self.by_id) - compiled
@@ -517,11 +538,238 @@ class _Compiler:
         return SemanticLayoutExpansion(tuple(self.result + data_rows), self.origins, str(layout))
 
 
+class _SmallCompiler(_Compiler):
+    """S 系列原角色和几何；不复用宽卡 Region 的业务权限。"""
+
+    size = "2x2"
+
+    def title(self, identifier: str) -> None:
+        if self.node(identifier).component_type != "SingleLineTitle":
+            _fail(identifier, "small title slot requires SingleLineTitle")
+
+    def content(self, identifier: str, *, compact: bool, fixed: bool = False) -> None:
+        super().content(identifier, compact=compact, fixed=fixed)
+        if self.node(identifier).component_type not in {"PillButton", "CircleButton"}:
+            self.geometry(identifier, {"width": "matchParent"})
+
+    def geometry(self, identifier: str, props: dict) -> None:
+        for index, row in enumerate(self.result):
+            if row.component_id == identifier:
+                self.result[index] = ComponentRow(
+                    identifier, row.component_type, {**row.props, **props}, row.children,
+                )
+                return
+        _fail(identifier, "missing compiled slot")
+
+    def group(self, row: ComponentRow, *, compact: bool, fixed: bool = False) -> None:
+        self.props(row, {"variant"})
+        variant = row.props.get("variant")
+        if not isinstance(variant, str):
+            _fail(row.component_id, "small Group.variant must be a registered string")
+        counts = {2, 3, 4} if variant == "supporting-items" else {2}
+        self.count(row, counts)
+        if variant not in {"hero-support", "label-value", "peer-pair", "supporting-items"}:
+            _fail(row.component_id, "unknown small Group.variant")
+        if self.action_nodes(row.children) or self.contains_type(row.children, "InfoBlock"):
+            _fail(row.component_id, "small Group contains only same-region read-only content")
+        props = {"width": "matchParent", "alignItems": "start",
+                 "justifyContent": "start", "itemMargin": 2}
+        children = row.children
+        kind = "Column"
+        if variant == "peer-pair":
+            kind = "Row"
+            props.update(itemMargin=8, alignItems="bottom")
+            wrapped = []
+            for index, child in enumerate(children):
+                wrapped.append(self.wrap(row.component_id, f"peer{index}", child,
+                                         {"layoutWeight": 1}))
+            children = tuple(wrapped)
+        self.add(row.component_id, kind, props, children, row.component_id)
+        for child in row.children:
+            self.content(child, compact=True)
+
+    def action(self, identifier: str, kind: str = "PillButton") -> None:
+        row = self.node(identifier)
+        if row.component_type != kind or not row.props.get("onClick"):
+            _fail(identifier, f"action role requires {kind} with onClick")
+
+    def standard_action_body(self, primary: str, action: str, gap: int) -> str:
+        content = self.wrap("root", "content", primary, {"layoutWeight": 1})
+        action_area = self.wrap("root", "action", action, {"height": 36, "flexShrink": 0})
+        return self.body("root", (content, action_area), gap, {})
+
+    def compile(self) -> SemanticLayoutExpansion:
+        from services.compact_layout_runtime import load_layout_contract
+
+        self.validate_tree("root", set(), set())
+        root = self.node("root")
+        layout = root.props.get("layout")
+        roles = SMALL_CHILD_ROLES.get(layout) if isinstance(layout, str) else None
+        if root.component_type != "Layout" or roles is None:
+            _fail("root", "choose a registered S-series Layout for size 2x2")
+        self.props(root, _BACKGROUND_PROPS | {"layout", "variant", "design", "onClick"})
+        count, description = roles
+        counts = {count, count + 1} if layout == "S-title-dual-column-action" else {count}
+        if len(root.children) not in counts:
+            _fail("root", f"expected child count {sorted(counts)}; requires children {description}")
+        contract = load_layout_contract()
+        layouts = contract.get("layouts", {})
+        registered = layouts.get(layout, {})
+        patterns = registered.get("patterns", [])
+        if not patterns:
+            raise ValueError("registered small layout geometry is incomplete")
+        rules = patterns[0].get("rules", [])
+        if not rules:
+            raise ValueError("registered small layout rules are incomplete")
+        root_design = rules[0].get("props", {})
+        props = {"width": "matchParent", "height": "matchParent", "borderRadius": 20,
+                 "clip": True, "alignItems": "start", "justifyContent": "start", **root_design}
+        for key in _BACKGROUND_PROPS | {"design", "onClick"}:
+            if key in root.props:
+                props[key] = deepcopy(root.props[key])
+        variant = root.props.get("variant", "standard")
+        allowed = {"standard"}
+        if layout in {"S-title-content-action", "S-title-primary-secondary-action"}:
+            allowed.add("dense")
+        if layout == "S-title-content-action":
+            allowed.update({"direct", "direct-tight", "direct-dense", "direct-flush"})
+        if layout == "S-title-dual-content":
+            allowed.add("stacked-info")
+        if not isinstance(variant, str) or variant not in allowed:
+            _fail("root", "allowed small variants: " + ", ".join(sorted(allowed)))
+        children = root.children
+        expected_actions: set[str] = set()
+        if layout.startswith("S-title-"):
+            self.title(children[0])
+        if layout in {"S-title-content-action", "S-title-primary-secondary-action",
+                      "S-title-anchor"}:
+            kind = "CircleButton" if layout == "S-title-anchor" else "PillButton"
+            self.action(children[-1], kind)
+            expected_actions.add(children[-1])
+        if layout == "S-content-dual-action":
+            for child in children[1:]:
+                self.action(child)
+                expected_actions.add(child)
+        if layout == "S-title-dual-column-action" and len(children) == 4:
+            self.action(children[-1])
+            expected_actions.add(children[-1])
+        if self.action_nodes(children) != expected_actions:
+            _fail("root", "Actions must occupy the selected small layout action roles")
+        for child in children:
+            self.content(child, compact=True)
+        if self.contains_type(children, "InfoBlock"):
+            if layout not in {"S-dual-info", "S-title-dual-content"}:
+                _fail("root", "InfoBlock requires a registered small fixed slot")
+        if layout == "S-center":
+            if self.node(children[0]).component_type != "DataDisplay":
+                _fail(children[0], "S-center requires one complete DataDisplay")
+        elif layout == "S-title-content":
+            content = self.wrap("root", "content", children[1],
+                                {"layoutWeight": 1, "justifyContent": "end"})
+            children = (children[0], content)
+        elif layout == "S-title-dual-content":
+            if variant == "stacked-info":
+                for child in children[1:]:
+                    row = self.node(child)
+                    if row.component_type != "InfoBlock" or row.props.get("visual"):
+                        _fail(child, "stacked-info requires two InfoBlock without visual")
+                    if row.props.get("variant") != "stacked":
+                        _fail(child, "stacked-info requires InfoBlock.variant='stacked'")
+                    self.geometry(child, {"height": 50})
+                body = self.body("root", children[1:], 8, {"height": 108})
+            else:
+                if self.contains_type(children[1:], "InfoBlock"):
+                    _fail("root", "two InfoBlock require stacked-info variant")
+                primary = self.wrap("root", "primary", children[1], {"layoutWeight": 1})
+                support = self.wrap("root", "support", children[2],
+                                    {"layoutWeight": 1, "justifyContent": "end"})
+                body = self.body("root", (primary, support), 8, {})
+            children = (children[0], body)
+        elif layout == "S-quad-content":
+            row_ids = []
+            for index in range(2):
+                pair = children[index * 2:index * 2 + 2]
+                for child in pair:
+                    self.geometry(child, {"width": 59, "height": 59})
+                identifier = self.generated("root", f"row{index}")
+                self.add(identifier, "Row", {"width": "matchParent", "itemMargin": 8,
+                                             "layoutWeight": 1}, pair, "root")
+                row_ids.append(identifier)
+            children = tuple(row_ids)
+        elif layout in {"S-title-content-action", "S-title-primary-secondary-action"}:
+            props["itemMargin"] = 4 if variant == "dense" else 6
+            primary = children[1]
+            if layout == "S-title-primary-secondary-action":
+                primary = self.generated("root", "primary_support")
+                self.add(primary, "Column", {"width": "matchParent", "itemMargin": 2,
+                                             "alignItems": "start", "justifyContent": "start",
+                                             "layoutWeight": 1},
+                         children[1:3], "root")
+            if variant.startswith("direct"):
+                gaps = {"direct": 6, "direct-dense": 4, "direct-tight": 2, "direct-flush": 0}
+                props["itemMargin"] = gaps.get(variant, 6)
+                self.geometry(primary, {"layoutWeight": 1})
+                children = (children[0], primary, children[-1])
+            else:
+                if layout == "S-title-primary-secondary-action":
+                    action = self.wrap("root", "action", children[-1],
+                                       {"height": 36, "flexShrink": 0})
+                    body = self.body("root", (primary, action), 8, {})
+                else:
+                    body = self.standard_action_body(primary, children[-1], 8)
+                children = (children[0], body)
+        elif layout == "S-title-dual-column-action":
+            metrics = self.ratios("root", children[1:3], grid=False)
+            if len(children) == 4:
+                action = self.wrap("root", "action", children[-1],
+                                   {"height": 36, "flexShrink": 0})
+                body = self.body("root", (metrics, action), 8, {})
+                children = (children[0], body)
+            else:
+                children = (children[0], metrics)
+        elif layout == "S-title-anchor":
+            support = self.node(children[2])
+            height = 40
+            if support.component_type == "NumericRatioStack":
+                if support.props.get("direction", "column") == "column":
+                    height = 56
+                    self.geometry(children[2], {"height": 56})
+            self.geometry(children[2], {"width": 78})
+            action_slot = self.generated("root", "action_slot")
+            self.add(action_slot, "Stack", {"width": 40, "height": 40,
+                                            "alignContent": "center"}, (children[-1],), "root")
+            bottom = self.generated("root", "bottom")
+            self.add(bottom, "Row", {"width": "matchParent", "height": height, "flexShrink": 0,
+                                     "itemMargin": 8, "alignItems": "bottom",
+                                     "justifyContent": "spaceBetween"},
+                     (children[2], action_slot), "root")
+            primary = self.wrap("root", "primary", children[1], {"layoutWeight": 1})
+            body = self.body("root", (primary, bottom), 8, {})
+            children = (children[0], body)
+        elif layout == "S-content-dual-action":
+            content = self.wrap("root", "content", children[0],
+                                {"layoutWeight": 1, "flexShrink": 0})
+            children = (content, *children[1:])
+        elif layout == "S-dual-info":
+            for child in children:
+                if self.node(child).component_type != "InfoBlock":
+                    _fail(child, "S-dual-info requires two InfoBlock")
+                self.geometry(child, {"layoutWeight": 1})
+        self.add("root", "Column", props, children, "root")
+        return self.finish(layout)
+
+
 def expand_semantic_layout_rows(
     rows: list[CompactRow] | tuple[CompactRow, ...], *, size: str | None = None,
 ) -> SemanticLayoutExpansion:
     if not has_semantic_layout(rows):
         return SemanticLayoutExpansion(tuple(rows), {})
-    if size not in {None, "2x4"}:
-        _fail("root", "semantic layout is available only for size 2x4")
-    return _Compiler(rows).compile()
+    root = next((row for row in rows if isinstance(row, ComponentRow)
+                 and row.component_id == "root"), None)
+    layout = root.props.get("layout") if root is not None else None
+    inferred = "2x2" if isinstance(layout, str) and layout in SMALL_CHILD_ROLES else "2x4"
+    target = inferred if size is None else size
+    if target != inferred:
+        _fail("root", f"layout is available only for size {inferred}, not {target}")
+    compiler = _SmallCompiler(rows) if target == "2x2" else _Compiler(rows)
+    return compiler.compile()

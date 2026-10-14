@@ -258,14 +258,20 @@ def test_2x4_few_shots_match_the_layout_declared_in_each_heading() -> None:
     _layout_pseudocodes(),
     ids=[item[0] for item in _layout_pseudocodes()],
 )
-def test_documented_layout_uses_abstract_genui_pseudocode(
+def test_documented_layout_uses_registered_semantic_or_legacy_pseudocode(
     layout_id: str,
     size: str,
     source: str,
 ) -> None:
-    del layout_id, size
     rows = [json.loads(line) for line in source.splitlines()]
     assert rows[0][0] == "root"
+    if rows[0][1] == "Layout":
+        assert rows[0][2].get("layout") == layout_id
+        assert layout_id in layout_ids_for_size(size)
+        children = rows[0][3]
+        assert children and len(children) == len(set(children))
+        assert all(isinstance(child, str) and "?" not in child for child in children)
+        return
     assert any(
         isinstance(row[1], str) and row[1].startswith("<")
         for row in rows
@@ -598,7 +604,9 @@ def test_unknown_layout_scope_is_rejected() -> None:
 
 
 def test_s_dual_info_rejects_non_contract_slot_heights() -> None:
-    source = _layout_fixture("S-dual-info")
+    source, _origins = expand_compact_semantic_layout(
+        _layout_fixture("S-dual-info"), size="2x2",
+    )
 
     def mutate(row: list) -> None:
         if row[0] == "shanghai":

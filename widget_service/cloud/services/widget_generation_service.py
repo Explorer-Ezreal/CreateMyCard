@@ -1616,7 +1616,6 @@ class WidgetGenerationService:
             design_token = model_client.extract_genui_payload(source_dsl)
             preserve_compact_source = (
                 policy.processor_kind == DslProcessorKind.DESIGN_COMPACT
-                and task_spec.size == "2x4"
                 and not source_generated_by_jsx
             )
             if preserve_compact_source:

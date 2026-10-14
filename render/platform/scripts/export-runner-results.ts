@@ -1,8 +1,11 @@
-import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
+import { spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type * as ReactDomServer from "react-dom/server";
 import { defaultRegistry, renderTree } from "@genui-sdk/renderer";
-import { compileMiniDsl } from "../lib/mini-renderer";
+import { compileA2uiJsonl } from "../lib/mini-renderer";
 
 type CardSize = "2x2" | "2x4";
 
@@ -33,14 +36,20 @@ type InputPayload = {
     userQuery?: string;
     title?: string;
     size?: CardSize;
+    appVersion?: string;
   };
   userQuery?: string;
   title?: string;
   size?: CardSize;
+  appVersion?: string;
+  deviceInfo?: {
+    prdVer?: string;
+  };
 };
 
 type RenderedCase = SummaryResult & {
   userQuery: string;
+  appVersion?: string;
   compactDsl: string;
   rendererA2ui: string;
   cloudA2ui: string;
@@ -64,6 +73,19 @@ type RenderedVariant = {
   rejected: boolean;
 };
 
+type PythonConversionRequest = {
+  key: string;
+  source: string;
+  size: CardSize;
+  preview: boolean;
+  appVersion?: string;
+};
+
+type PythonConversionResult = {
+  genui?: string;
+  error?: string;
+};
+
 const platformRoot = process.cwd();
 const repositoryRoot = path.resolve(platformRoot, "../..");
 const defaultBatchDirectory = path.join(
@@ -83,6 +105,67 @@ function argument(name: string): string | undefined {
   if (direct) return direct.slice(name.length + 1);
   const index = process.argv.indexOf(name);
   return index >= 0 ? process.argv[index + 1] : undefined;
+}
+
+function pythonInterpreter(): string {
+  const configured = argument("--python") ?? process.env.WIDGET_SERVICE_PYTHON?.trim();
+  if (configured) return configured;
+  const candidates = process.platform === "win32"
+    ? [path.join(repositoryRoot, "widget_service/.venv/Scripts/python.exe")]
+    : [path.join(repositoryRoot, "widget_service/.venv/bin/python")];
+  return candidates.find(candidate => existsSync(candidate))
+    ?? (process.platform === "win32" ? "python" : "python3");
+}
+
+async function convertCompactVariants(
+  requests: PythonConversionRequest[],
+): Promise<Map<string, PythonConversionResult>> {
+  const converted = new Map<string, PythonConversionResult>();
+  if (!requests.length) return converted;
+  const temporaryDirectory = await mkdtemp(path.join(tmpdir(), "create-my-card-gallery-"));
+  const inputPath = path.join(temporaryDirectory, "input.json");
+  const outputPath = path.join(temporaryDirectory, "output.json");
+  const converterPath = path.join(
+    repositoryRoot,
+    "widget_service/tools/convert_compact_gallery.py",
+  );
+  try {
+    await writeFile(inputPath, JSON.stringify({ requests }), "utf8");
+    const completed = spawnSync(
+      pythonInterpreter(),
+      [converterPath, "--input", inputPath, "--output", outputPath],
+      {
+        cwd: repositoryRoot,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          WIDGET_SERVICE_LOCAL_FLAG: process.env.WIDGET_SERVICE_LOCAL_FLAG ?? "true",
+        },
+        maxBuffer: 64 * 1024 * 1024,
+      },
+    );
+    if (completed.error) throw completed.error;
+    if (completed.status !== 0) {
+      const detail = completed.stderr.trim() || completed.stdout.trim() || "未知错误";
+      throw new Error(`正式 Python Gallery 转换失败：${detail}`);
+    }
+    const payload = JSON.parse(await readFile(outputPath, "utf8")) as {
+      results?: Array<{ key?: unknown; genui?: unknown; error?: unknown }>;
+    };
+    if (!Array.isArray(payload.results)) {
+      throw new Error("正式 Python Gallery 转换器返回了无效结果");
+    }
+    for (const result of payload.results) {
+      if (typeof result.key !== "string") continue;
+      converted.set(result.key, {
+        genui: typeof result.genui === "string" ? result.genui : undefined,
+        error: typeof result.error === "string" ? result.error : undefined,
+      });
+    }
+    return converted;
+  } finally {
+    await rm(temporaryDirectory, { recursive: true, force: true });
+  }
 }
 
 function escapeHtml(value: string): string {
@@ -247,6 +330,7 @@ async function loadCase(
     title: result.title || content.title || input.title || `Q${result.index}`,
     size: result.size || content.size || input.size || "2x2",
     userQuery: content.userQuery || input.userQuery || "",
+    appVersion: content.appVersion || input.appVersion || input.deviceInfo?.prdVer,
     compactDsl,
     rendererA2ui: "",
     cloudA2ui,
@@ -262,17 +346,17 @@ function renderVariant(
   variant: RenderedVariant,
   size: CardSize,
   dataUris: Map<string, string>,
+  a2ui: string,
+  conversionError = "",
 ): void {
-  if (!variant.compactDsl) {
-    variant.renderError = "没有最终 Compact DSL 产物";
+  if (!a2ui) {
+    variant.renderError = conversionError
+      || (variant.compactDsl ? "正式 Python 转换器没有返回 A2UI" : "没有最终 Compact DSL 产物");
     return;
   }
   try {
-    const compiled = compileMiniDsl(variant.compactDsl, {
-      size,
-      previewMode: variant.rejected,
-    });
-    variant.rendererA2ui = compiled.jsonl;
+    const compiled = compileA2uiJsonl(a2ui, { size });
+    variant.rendererA2ui = a2ui;
     variant.warnings = compiled.warnings;
     const markup = renderToStaticMarkup(
       renderTree(compiled.graph, defaultRegistry, {
@@ -290,9 +374,35 @@ function renderVariant(
   }
 }
 
-function renderCases(cases: RenderedCase[], dataUris: Map<string, string>): void {
+function conversionKey(item: RenderedCase, variant: RenderedVariant): string {
+  return `q${item.index}:${variant.key}`;
+}
+
+async function renderCases(
+  cases: RenderedCase[],
+  dataUris: Map<string, string>,
+): Promise<void> {
+  const requests: PythonConversionRequest[] = [];
   for (const item of cases) {
-    for (const variant of item.variants) renderVariant(variant, item.size, dataUris);
+    for (const [index, variant] of item.variants.entries()) {
+      if (!variant.compactDsl) continue;
+      if (index === 0 && item.cloudA2ui) continue;
+      requests.push({
+        key: conversionKey(item, variant),
+        source: variant.compactDsl,
+        size: item.size,
+        preview: variant.rejected,
+        appVersion: item.appVersion,
+      });
+    }
+  }
+  const conversions = await convertCompactVariants(requests);
+  for (const item of cases) {
+    for (const [index, variant] of item.variants.entries()) {
+      const conversion = conversions.get(conversionKey(item, variant));
+      const a2ui = index === 0 && item.cloudA2ui ? item.cloudA2ui : conversion?.genui ?? "";
+      renderVariant(variant, item.size, dataUris, a2ui, conversion?.error);
+    }
     const finalVariant = item.variants[0];
     item.rendererA2ui = finalVariant.rendererA2ui;
     item.warnings = finalVariant.warnings;
@@ -492,7 +602,7 @@ function renderDocument(summary: Summary, cases: RenderedCase[]): string {
 </head>
 <body>
   <header class="topbar">
-    <div><h1>${escapeHtml(title)}</h1><p>直接使用 render/platform 的 compileMiniDsl 与 @genui-sdk/renderer 生成 · ${escapeHtml(summary.timestamp ?? "")}</p></div>
+    <div><h1>${escapeHtml(title)}</h1><p>最终结果复用云侧 A2UI，中间结果使用正式 Python 转换器与 @genui-sdk/renderer 生成 · ${escapeHtml(summary.timestamp ?? "")}</p></div>
     <div class="summary">
       <div class="metric"><b>${cases.length}</b><span>总任务</span></div>
       <div class="metric"><b>${summary.success ?? 0}</b><span>生成成功</span></div>
@@ -538,7 +648,7 @@ async function main(): Promise<void> {
   const dataUris = await loadAssetDataUris(
     cases.flatMap(item => item.variants.map(variant => variant.compactDsl)),
   );
-  renderCases(cases, dataUris);
+  await renderCases(cases, dataUris);
   const document = renderDocument(summary, cases);
   await mkdir(path.dirname(outputPath), { recursive: true });
   await writeFile(outputPath, document, "utf8");

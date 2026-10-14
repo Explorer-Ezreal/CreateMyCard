@@ -69,7 +69,8 @@
 <!-- prompt:catalog -->
 # 2. Compact DSL 组件合同
 
-只允许三种基础布局组件：`Row`、`Column`、`Stack`。
+模型只用本尺寸登记的语义布局：Layout、Group，以及2x4独立分区的Region。
+Row/Column/Stack仅由编译器生成或读取旧输入，不是新生成候选。
 
 除基础布局组件外，只允许：`SingleLineTitle`、`DoubleLineTitle`、`Badge`、
 `EmphasizedData`、`EmphasisText`、`SecondaryBody`、`DataDisplay`、`InfoBlock`、`TableText`、`SummaryList`、
@@ -79,9 +80,10 @@
 ## 2.1 组件共同规则
 
 - 组件行的语义字段和样式字段直接写在第三项 `props`，不用的字段省略，不嵌套 `styles`。
-- 只有 `Row`、`Column`、`Stack` 在第 4 项声明非空 `children`；其它组件均只输出一行且不带 children。
+- 只有本尺寸登记的Layout、Region、Group在第4项声明非空children；其它组件均只输出一行且不带 children。
 - 布局组件只能使用各自章节列出的字段。使用视觉 Recipe 的组件只能使用自身属性表，
-  并可额外使用 `width`、`height`、`layoutWeight`、`flexShrink`、`margin` 调整组件根的外部布局。
+  新语义源不填写width、height、layoutWeight、flexShrink、margin等外部几何；
+  这些字段仅兼容旧低阶输入，新源槽位由模板提供。
 - `PillButton` 不使用上述 `width` 例外；其宽度固定由所在动作槽和 Recipe 撑满。
 - 视觉 Recipe 组件不接受 `padding`、圆角、内部间距或对齐覆盖；本文件标有 `fontSize` 的文本组件在新生成时
   必须显式写出固定主字号，帮助布局预算，但该值必须等于 Recipe，不是可调样式。内部次级字号、结构和样式仍由转换器确定。
@@ -94,31 +96,18 @@
 
 ## 3. 布局组件
 
-### 3.1 `Row`
+### 3.1 Layout
 
-用于横向排列同级子组件。第 4 项 `children` 必填；`itemMargin` 可选数字 vp，`space` 是兼容别名。
-`justifyContent` 只取 `start|center|end|spaceAround|spaceBetween|spaceEvenly`，`alignItems` 只取
-`top|center|bottom`。可使用 `width`、`height`、`constraintSize`、`aspectRatio`、`margin`、`padding`、
-`borderRadius`、`borderWidth`、`borderColor`、`backgroundColor`、`backgroundImage`、
-`backgroundImageSizeWithStyle`、`linearGradient`、`shadow`、`layoutWeight`、`flexShrink`、`visibility`、`clip`。
-子组件宽度、padding 与最小间距之和必须不超过父宽；分布式对齐不能修复负剩余空间。
-`justifyContent` 使用 `spaceAround|spaceBetween|spaceEvenly` 时，`itemMargin` 仍是必须保留的最小间距；
-两者可以同时设置，但只能把扣除最小间距后的非负剩余空间交给分布式对齐。
-同一行不同字号的文字采用`Row alignItems="bottom"`底部对齐，2x2与2x4都遵守；语义组件内部由转换器统一执行，
-不手写Text或覆盖组件内部padding。数值与真实单位保留各自固定字号并紧邻，不把单位居中悬在大字旁。
+root选择当前尺寸正式布局；children按layouts合同的有序角色填写。背景沿用Core，几何由模板展开。
 
-### 3.2 `Column`
+### 3.2 Region
 
-用于纵向排列有先后层级的子组件。第 4 项 `children` 必填；`itemMargin` 可选数字 vp，`space` 是兼容别名。
-`justifyContent` 与 Row 相同，`alignItems` 只取 `start|center|end`，可使用与 Row 相同的布局与表面字段。
-子组件高度、padding 与最小间距之和必须不超过父高；`layoutWeight` 和 `flexShrink` 不抵消真实最小高度。
-`justifyContent` 使用分布式对齐时同样先扣除 `itemMargin`，不能依赖它消除负剩余空间。
+仅2x4独立内容分区使用，选择登记variant及有序角色，不填写几何或绑定事件。
 
-### 3.3 `Stack`
+### 3.3 Group
 
-只用于背景与前景、图标底板等真实叠放。第 4 项 `children` 必填；`alignContent` 只取
-`topStart|top|topEnd|start|center|end|bottomStart|bottom|bottomEnd`。可使用与 Row 相同的布局与表面字段，
-但不使用 `itemMargin`、`justifyContent` 或 `alignItems`。进度组件已包含内部结构，不再手写内部 Stack。
+同区语义合组，只填本尺寸登记variant及真实children；不跨对象混组，不增加组件或动作容量。
+数字与单位的字底对齐由业务组件内部保证，不手写基础文字或内部Row/Stack。
 
 ## 4. 文本与信息组件
 
@@ -201,7 +190,7 @@ SVG 标题图标由运行时使用 100% 不透明的主图形色，不由模型�
 
 #### 槽位与容量
 
-不能单独进入标题位或内容位；必须紧跟标题组件，共同放入标题 Row。数量在整卡只表达一次。
+不能单独进入标题位或内容位；必须紧跟标题组件，在2x4中共同放入Group.title-count。数量在整卡只表达一次。
 
 ```genui
 ["event_count","Badge",{"value":{"path":"/data/calendar/eventCount"},"backgroundColor":"#338C4B1C"}]
@@ -384,7 +373,7 @@ Expression；保留原始绑定、标签和单位。不因能拼接 Expression �
 无 visual 的紧凑 `InfoBlock`。短静态对象标签可以和一个动态值组成完整 Expression，用来区分同级对象：
 
 ```genui
-["tomorrow","InfoBlock",{"variant":"stacked","width":"matchParent","height":50,"primaryText":"{{ '明天 ' + ${/data/weather/daily/1/condition} }}","secondaryText":"{{ '空气质量 ' + ${/data/weather/daily/1/airQuality} }}","backgroundColor":"#CCFFFFFF"}]
+["tomorrow","InfoBlock",{"variant":"stacked","primaryText":"{{ '明天 ' + ${/data/weather/daily/1/condition} }}","secondaryText":"{{ '空气质量 ' + ${/data/weather/daily/1/airQuality} }}","backgroundColor":"#CCFFFFFF"}]
 ```
 
 有准确语义图标时使用 `visual.type:"icon"`。Compact DSL 直接绑定真实路径，不使用 `dataIds` 或
@@ -487,7 +476,7 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 | `externalText` | number / string / Expression / PathBinding | 静态 / Expression / PathBinding | 必填；`0–100` 数值、纯数值字符串、完整百分比字符串，或结果为 `0–100` 数值的完整 Expression；需要环外百分号时可让 Expression 以 `+ '%'` 或 `+ '％'` 结尾 |
 | `icon` | string | 仅静态 | 必填；逐字使用当前素材候选路径 |
 | `accessibility` | object | 仅静态 | 必填；包含非空 `label`，可选 `description` |
-| `width`、`height` | number | 仅静态 | 必填；按当前槽位填写正数 vp |
+| `width`、`height` | number | 仅静态 | 旧输入必填；新语义源不填，由登记比例槽注入 |
 | `color` | `#AARRGGBB` | 仅静态 | 必填；完成轨道颜色 |
 | `backgroundColor` | `#AARRGGBB` | 仅静态 | 必填；未完成轨道颜色 |
 | `fillColor` | `#AARRGGBB` | 仅静态 | 使用默认可染色 SVG 时必填；原色 SVG 或 PNG 不填写 |
@@ -499,7 +488,7 @@ visual 不是装饰；`progressCircle` 只用于可验证的 `0–100` 主值。
 #### 示例
 
 ```genui
-["ratio","ProgressCircle",{"externalText":{"path":"/data/device/batteryPercent"},"icon":"resources/base/media/battery_leaf_fill.svg","accessibility":{"label":"设备电量百分比"},"width":52,"height":68,"fillColor":"#991F4799","color":"#FF1F4799","backgroundColor":"#331F4799"}]
+["ratio","ProgressCircle",{"externalText":{"path":"/data/device/batteryPercent"},"icon":"resources/base/media/battery_leaf_fill.svg","accessibility":{"label":"设备电量百分比"},"fillColor":"#991F4799","color":"#FF1F4799","backgroundColor":"#331F4799"}]
 ```
 
 #### 注意事项
