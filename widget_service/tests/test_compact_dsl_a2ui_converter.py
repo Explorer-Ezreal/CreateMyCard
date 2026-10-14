@@ -1289,7 +1289,7 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
                                     "columns": columns,
                                     "fontSize": font_size,
                                     "items": [
-                                        {"label": "电量 ", "value": {"path": "/data/percent"}},
+                                        {"label": "电 ", "value": {"path": "/data/percent"}},
                                         {"value": "{{ '状态 ' + ${/data/status} }}"},
                                     ],
                                 },
@@ -1322,6 +1322,109 @@ class CompactDslA2uiConverterTest(unittest.TestCase):
                         self.assertEqual(separator.get("content"), " | ")
                     else:
                         self.assertIsNone(separator)
+
+    def test_secondary_body_automatically_packs_known_text_without_losing_bindings(self) -> None:
+        for size, font, row_ids in (
+            ("2x2", 12, ["meta_row0", "meta_row1"]),
+            ("2x4", 14, ["meta_row0"]),
+        ):
+            with self.subTest(size=size):
+                source = _serialize([
+                    ["root", "Column", {"width": "matchParent", "padding": 12}, ["meta"]],
+                    ["meta", "SecondaryBody", {
+                        "width": "matchParent", "fontSize": 14, "separator": " | ",
+                        "items": [
+                            {"value": {"path": "/data/date"}},
+                            {"value": "{{ ${/data/weekday} }}"},
+                        ],
+                    }],
+                    ["/data/date", "2026-08-06"],
+                    ["/data/weekday", "星期四"],
+                ])
+                messages = convert_compact_dsl_to_a2ui(source, size=size).splitlines()
+                update = json.loads(messages[1]).get("updateComponents")
+                assert isinstance(update, dict)
+                nodes = update.get("components")
+                assert isinstance(nodes, list)
+                by_id = {node.get("id"): node for node in nodes}
+                meta = by_id.get("meta")
+                value = by_id.get("meta_item0_value")
+                assert isinstance(meta, dict)
+                assert isinstance(value, dict)
+                self.assertEqual(meta.get("children"), row_ids)
+                self.assertEqual(value.get("content"), "{{ ${/data/date} }}")
+                styles = value.get("styles")
+                assert isinstance(styles, dict)
+                self.assertEqual(styles.get("fontSize"), font)
+                self.assertEqual(styles.get("height"), 16 if font == 12 else 19)
+                separator = by_id.get("meta_row0_separator")
+                if size == "2x2":
+                    self.assertIsNone(separator)
+                else:
+                    assert isinstance(separator, dict)
+                    self.assertEqual(separator.get("content"), " | ")
+                    first = by_id.get("meta_item0")
+                    second = by_id.get("meta_item1")
+                    assert isinstance(first, dict)
+                    assert isinstance(second, dict)
+                    first_styles = first.get("styles")
+                    second_styles = second.get("styles")
+                    assert isinstance(first_styles, dict)
+                    assert isinstance(second_styles, dict)
+                    self.assertGreater(first_styles.get("width"), second_styles.get("width"))
+                data_update = json.loads(messages[2]).get("updateDataModel")
+                assert isinstance(data_update, dict)
+                self.assertEqual(data_update.get("value"), {
+                    "data": {"date": "2026-08-06", "weekday": "星期四"},
+                })
+
+    def test_secondary_body_wraps_long_single_value_and_keeps_unknown_values(self) -> None:
+        cases = [
+            ({"value": "完整的长补充信息需要自动换行"}, 12, 2),
+            ({"value": {"path": "/unknown"}}, 14, 1),
+        ]
+        for item, font, lines in cases:
+            with self.subTest(item=item):
+                source = _serialize([
+                    ["root", "Column", {}, ["meta"]],
+                    ["meta", "SecondaryBody", {
+                        "width": 126, "fontSize": 14, "items": [item],
+                    }],
+                ])
+                update = json.loads(
+                    convert_compact_dsl_to_a2ui(source, size="2x2").splitlines()[1]
+                ).get("updateComponents")
+                assert isinstance(update, dict)
+                nodes = update.get("components")
+                assert isinstance(nodes, list)
+                value = next(node for node in nodes if node.get("id") == "meta_item0_value")
+                styles = value.get("styles")
+                assert isinstance(styles, dict)
+                self.assertEqual(styles.get("fontSize"), font)
+                self.assertEqual(styles.get("maxLines"), lines)
+
+    def test_secondary_body_wraps_label_with_value_without_staticizing_binding(self) -> None:
+        source = _serialize([
+            ["root", "Column", {}, ["meta"]],
+            ["meta", "SecondaryBody", {
+                "width": 126, "fontSize": 14,
+                "items": [{"label": "更新时间 ", "value": {"path": "/updated"}}],
+            }],
+            ["/updated", "2026-08-06 09:00"],
+        ])
+        update = json.loads(
+            convert_compact_dsl_to_a2ui(source, size="2x2").splitlines()[1]
+        ).get("updateComponents")
+        assert isinstance(update, dict)
+        nodes = update.get("components")
+        assert isinstance(nodes, list)
+        value = next(node for node in nodes if node.get("id") == "meta_item0_value")
+        self.assertEqual(value.get("content"), "{{ '更新时间 ' + ${/updated} }}")
+        styles = value.get("styles")
+        assert isinstance(styles, dict)
+        self.assertEqual(styles.get("fontSize"), 12)
+        self.assertEqual(styles.get("maxLines"), 2)
+        self.assertFalse(any(node.get("id") == "meta_item0_label" for node in nodes))
 
     def test_secondary_body_rejects_uncontrolled_text_shapes(self) -> None:
         invalid_props = [

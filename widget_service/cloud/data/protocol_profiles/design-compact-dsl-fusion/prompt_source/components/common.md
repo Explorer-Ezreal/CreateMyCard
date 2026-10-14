@@ -284,8 +284,8 @@ Expression；`mainText` 不接受数组，互不相关或需要逐项标签的�
 | Prop | 类型 | 绑定能力 | 要求 |
 |---|---|---|---|
 | `items` | Array | 数组结构仅静态 | 必填；1–4 项 |
-| `items[].value` | 显示值 | 静态 / Expression / PathBinding | 必填；保留完整值和单位 |
-| `items[].label` | string | 仅静态 | 可选；短标签 |
+| `items[].value` | 显示值 | 静态 / Expression / PathBinding | 必填；承载完整值和单位；追加单位或格式化使用完整 Expression |
+| `items[].label` | string | 仅静态 | 可选；可独立识别的短字段名称优先写在这里，不拼进 value |
 | `items[].maxLines` | number | 仅静态 | 可选；`1|2`，默认 1；两行时必须预留高度 |
 | `columns` | number | 仅静态 | 可选；`1|2`，默认 2；1 表示每项独占一行 |
 | `separator` | string | 仅静态 | 可选；同一行相邻项默认用 ` | ` 分隔，跨行不加分隔符 |
@@ -297,13 +297,20 @@ Expression；`mainText` 不接受数组，互不相关或需要逐项标签的�
 超过一行或任一项使用 `maxLines:2` 时，整组为 `12fp/400`、行高 `16vp`。
 两项同行用 14；两项 `columns:1` 分行用 12，不能只按项目数判断。
 每行最多两项，行间距固定 2；总高度为各行最大 `maxLines × 行高` 之和加行间距。
+转换器按首帧完整文案与参考槽位宽度自动分行，整组转为多行时使用12fp/16vp，不裁切原值；
+同行短项按自然占宽，不强制等分。没有已知文案或宽度时仍须显式声明单列/两行并预留容量。
+自动换行是转换阶段的保守预算，不承诺已导出A2UI在后续数据变长时自动重编行布局。
 文字放不下时使用单列或合法两行，并同步字号与高度预算；不裁切、删单位或手动缩字。
-标签保留自然宽度，值承接剩余宽度；长标签可与值合并到同项完整 Expression，保留原始绑定。
+可独立识别的短字段名称优先放 `label`，动态值和单位放同项 `value`；裸值直接绑定，
+不重复添加原值已含的名称或单位。标签保留自然宽度，值承接剩余宽度。
+只有完整正文，或使用单列/合法两行后确实仍无法分开完整排版时，才把标签合入同项完整
+Expression；保留原始绑定、标签和单位。不因能拼接 Expression 就省略短标签，也不为纯正文补造 label。
 不输出 `role`，不覆盖内部字重、padding 或对齐。
 
 ```genui
 ["description","SecondaryBody",{"items":[{"value":{"path":"/data/weather/description"},"maxLines":2}],"fontSize":12}]
-["updated","SecondaryBody",{"items":[{"value":"{{ '更新 ' + ${/data/weather/updatedAt} }}"}],"fontSize":14}]
+["updated","SecondaryBody",{"items":[{"label":"更新 ","value":{"path":"/data/weather/updatedAt"}}],"fontSize":14}]
+["heart_detail","SecondaryBody",{"items":[{"label":"最低心率 ","value":"{{ ${/data/healthSport/exerciseHeartRateMin} + '次/分钟' }}","maxLines":2}],"fontSize":12}]
 ["sleep_detail","SecondaryBody",{"items":[{"label":"夜间睡眠 ","value":{"path":"/data/healthSport/nightSleepDurationText"}},{"label":"午睡 ","value":{"path":"/data/healthSport/napDurationText"}}],"separator":" | ","fontSize":14}]
 ```
 
