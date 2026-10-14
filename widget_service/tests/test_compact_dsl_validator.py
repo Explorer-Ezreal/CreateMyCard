@@ -223,6 +223,32 @@ def test_model_output_accepts_secondary_body_with_core_sibling() -> None:
     )
 
 
+def test_model_output_accepts_secondary_body_with_core_in_other_region() -> None:
+    compact_dsl = "\n".join(
+        [
+            '["root","Column",{},["primary","bottom"]]',
+            '["primary","Column",{},["wind"]]',
+            '["wind","EmphasisText",{"mainText":"东南风 2级","fontSize":18}]',
+            '["bottom","Row",{},["detail","support_label"]]',
+            '["detail","SecondaryBody",{"items":['
+            '{"value":"更新于 09:00"}],"fontSize":14}]',
+            '["support_label","SingleLineTitle",{"title":"更新时间",'
+            '"fontSize":12}]',
+        ]
+    )
+    validate_compact_dsl(
+        compact_dsl,
+        task_spec={
+            "size": "2x2",
+            "eventCandidates": [],
+            "dataModelSchema": {"data": {}},
+            "assetCandidates": [],
+        },
+        card_spec={"suggestSize": "2x2", "dataBindings": []},
+        enforce_model_component_types=True,
+    )
+
+
 @pytest.mark.parametrize("companion", ["PillButton", "SecondaryBody"])
 def test_model_output_rejects_secondary_body_without_core_companion(
     companion: str,
@@ -627,6 +653,73 @@ def test_accepts_icons_matching_plan_asset_assignments() -> None:
         card_spec={"suggestSize": "2x2", "dataBindings": []},
         compact_plan=compact_plan,
     )
+
+
+def test_allows_plan_title_asset_without_title_when_info_block_is_present() -> None:
+    task_spec = {
+        "size": "2x2",
+        "eventCandidates": [],
+        "dataModelSchema": {"data": {}},
+        "assetCandidates": [
+            {"id": "asset.earphone", "src": "resources/earphone.svg"},
+        ],
+    }
+    compact_plan = {
+        "assetAssignments": {
+            "actions": [],
+            "title": {"assetId": "asset.earphone"},
+        }
+    }
+    compact_dsl = "\n".join(
+        [
+            '["root","Column",{},["left","right"]]',
+            '["left","InfoBlock",{"primaryText":"左耳 80%",'
+            '"secondaryText":"未充电","backgroundColor":"#CCFFFFFF"}]',
+            '["right","InfoBlock",{"primaryText":"右耳 75%",'
+            '"secondaryText":"未充电","backgroundColor":"#CCFFFFFF"}]',
+        ]
+    )
+
+    validate_compact_dsl(
+        compact_dsl,
+        task_spec=task_spec,
+        card_spec={"suggestSize": "2x2", "dataBindings": []},
+        compact_plan=compact_plan,
+    )
+
+
+def test_rejects_plan_title_asset_without_title_or_info_block() -> None:
+    task_spec = {
+        "size": "2x2",
+        "eventCandidates": [],
+        "dataModelSchema": {"data": {}},
+        "assetCandidates": [
+            {"id": "asset.weather", "src": "resources/weather.svg"},
+        ],
+    }
+    compact_plan = {
+        "assetAssignments": {
+            "actions": [],
+            "title": {"assetId": "asset.weather"},
+        }
+    }
+    compact_dsl = "\n".join(
+        [
+            '["root","Column",{},["weather"]]',
+            '["weather","EmphasisText",{"mainText":"晴"}]',
+        ]
+    )
+
+    with pytest.raises(
+        CompactDslValidationError,
+        match="assetAssignments.title selected an icon but DSL has no SingleLineTitle",
+    ):
+        validate_compact_dsl(
+            compact_dsl,
+            task_spec=task_spec,
+            card_spec={"suggestSize": "2x2", "dataBindings": []},
+            compact_plan=compact_plan,
+        )
 
 
 @pytest.mark.parametrize(

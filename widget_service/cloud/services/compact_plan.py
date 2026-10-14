@@ -506,33 +506,31 @@ def _anchor_plan_errors(
 def _secondary_body_composition_errors(
     composition: dict[str, Any] | None,
 ) -> list[str]:
-    """Require every planned SecondaryBody group to support a core group in its region."""
+    """Require planned SecondaryBody groups to have a core group in the card."""
     if not isinstance(composition, dict):
         return []
-    errors: list[str] = []
+    components: set[str] = set()
     for region in composition.get("regions", []):
         if not isinstance(region, dict):
             continue
         groups = region.get("groups", [])
         if not isinstance(groups, list):
             continue
-        components: set[str] = set()
         for group in groups:
             if not isinstance(group, dict):
                 continue
             component = group.get("component")
             if isinstance(component, str):
                 components.add(component)
-        if "SecondaryBody" not in components:
-            continue
-        if components & CORE_INFORMATION_COMPONENT_TYPES:
-            continue
-        errors.append(
-            f"composition region {region.get('id')} uses SecondaryBody without a core "
-            "information component in the same region; titles, buttons, layout containers "
-            "and other SecondaryBody groups do not count."
-        )
-    return errors
+    if "SecondaryBody" not in components:
+        return []
+    if components & CORE_INFORMATION_COMPONENT_TYPES:
+        return []
+    return [
+        "composition uses SecondaryBody without a core information component anywhere "
+        "in the card; titles, buttons, layout containers and other SecondaryBody groups "
+        "do not count."
+    ]
 
 
 def _small_content_region(
@@ -901,8 +899,9 @@ def compact_plan_context(
         "compositionNotes 是需要纠正的组合诊断，不允许通过裁切、缩字或删事实处理。"
         "确有合同/容量冲突时整体重选可承载的分区合组并重新核算，不能盲从错误计划。\n"
         "一个语义分区可使用一个 SingleLineTitle；2x4 左右独立分区"
-        "可分别使用 SingleLineTitle。被 Plan 指定给 SingleLineTitle 的标题事实必须出现在某个"
-        "SingleLineTitle.title 中，不能改由正文组件承载。需要标题加次信息时使用 DoubleLineTitle。\n"
+        "可分别使用 SingleLineTitle。componentHints 中的 SingleLineTitle 仍是软候选；"
+        "最终布局或语义不适配时，可由其它合法语义组件承载该事实，但事实仍必须完整可见。"
+        "需要标题加次信息时使用 DoubleLineTitle。\n"
         "逐项核对 dataId → 可见组件 Prop：标题、地区、更新时间也必须真实绑定；"
         "不能用用户原话或 sampleValue 写死，即使首帧文字相同。只写数据行、只在事件参数"
         "引用都不算可见。actionId → 所属对象的点击组件或用户明确要求的独立动作槽，"
@@ -958,8 +957,6 @@ def _component_intent_context(plan: dict[str, Any]) -> str:
 class _CompactVisibleState:
     paths: frozenset[str]
     literals: tuple[str, ...]
-    title_paths: frozenset[str]
-    title_literals: tuple[str, ...]
     handlers: tuple[dict[str, Any], ...]
 
 
@@ -974,8 +971,6 @@ class CompactPlanCoverageResult:
 def _compact_visible_state(components: list[ComponentRow]) -> _CompactVisibleState:
     visible_paths: set[str] = set()
     visible_literals: list[str] = []
-    single_line_title_paths: set[str] = set()
-    single_line_title_literals: list[str] = []
     handlers: list[dict[str, Any]] = []
     for component in components:
         visible_props = {
@@ -984,20 +979,12 @@ def _compact_visible_state(components: list[ComponentRow]) -> _CompactVisibleSta
             if key in _VISIBLE_PROP_NAMES
         }
         _collect_paths_and_literals(visible_props, visible_paths, visible_literals)
-        if component.component_type == "SingleLineTitle":
-            _collect_paths_and_literals(
-                {"title": component.props.get("title")},
-                single_line_title_paths,
-                single_line_title_literals,
-            )
         on_click = component.props.get("onClick")
         if isinstance(on_click, list):
             handlers.extend(item for item in on_click if isinstance(item, dict))
     return _CompactVisibleState(
         paths=frozenset(visible_paths),
         literals=tuple(_normalize_text(value) for value in visible_literals),
-        title_paths=frozenset(single_line_title_paths),
-        title_literals=tuple(_normalize_text(value) for value in single_line_title_literals),
         handlers=tuple(handlers),
     )
 
@@ -1009,24 +996,10 @@ def _compact_fact_coverage_result(
 ) -> CompactPlanCoverageResult:
     requirement = fact.get("requirement")
     label = requirement if isinstance(requirement, str) else "unknown requirement"
-    hints = fact.get("componentHints")
-    requires_single_line_title = isinstance(hints, list) and "SingleLineTitle" in hints
     data_id = fact.get("dataId")
     if isinstance(data_id, str) and data_id not in state.paths:
         return CompactPlanCoverageResult(
             errors=(f"Plan fact is missing from visible DSL: {label} ({data_id}).",),
-            warnings=(),
-        )
-    if (
-        isinstance(data_id, str)
-        and requires_single_line_title
-        and data_id not in state.title_paths
-    ):
-        return CompactPlanCoverageResult(
-            errors=(
-                "Plan title fact must be visible in a SingleLineTitle.title: "
-                f"{label} ({data_id}).",
-            ),
             warnings=(),
         )
     action_id = fact.get("actionId")
@@ -1043,16 +1016,6 @@ def _compact_fact_coverage_result(
     text = fact.get("text")
     if isinstance(text, str):
         expected_text = _normalize_text(text)
-        if requires_single_line_title and not any(
-            expected_text in actual for actual in state.title_literals
-        ):
-            return CompactPlanCoverageResult(
-                errors=(
-                    "Plan title fact must be visible in a SingleLineTitle.title: "
-                    f"{label}.",
-                ),
-                warnings=(),
-            )
         if not expected_text or not any(expected_text in actual for actual in state.literals):
             return CompactPlanCoverageResult(
                 errors=(),

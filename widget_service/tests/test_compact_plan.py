@@ -7,6 +7,7 @@ import pytest
 from services.compact_dsl_a2ui_converter import MODEL_COMPACT_INPUT_COMPONENT_TYPES
 from services.compact_plan import (
     CompactPlanValidationError,
+    _secondary_body_composition_errors,
     build_compact_plan_tool,
     compact_plan_asset_ids,
     compact_plan_coverage_errors,
@@ -164,7 +165,7 @@ def plan_call_with_composition(*, content_height: int = 34) -> str:
     return json.dumps(payload, ensure_ascii=False)
 
 
-def test_plan_composition_rejects_isolated_secondary_body_region() -> None:
+def test_plan_composition_rejects_secondary_body_when_card_has_no_core() -> None:
     payload = json.loads(plan_call_with_composition())
     arguments = payload.get("arguments")
     assert isinstance(arguments, dict)
@@ -237,6 +238,23 @@ def test_plan_composition_accepts_secondary_body_with_core_group() -> None:
     secondary = groups[1]
     assert isinstance(secondary, dict)
     assert secondary.get("component") == "SecondaryBody"
+
+
+def test_plan_composition_accepts_secondary_body_with_core_in_other_region() -> None:
+    composition = {
+        "regions": [
+            {
+                "id": "primary",
+                "groups": [{"component": "EmphasisText"}],
+            },
+            {
+                "id": "support",
+                "groups": [{"component": "SecondaryBody"}],
+            },
+        ]
+    }
+
+    assert _secondary_body_composition_errors(composition) == []
 
 
 def asset_task_spec() -> dict:
@@ -911,7 +929,7 @@ def test_optional_drop_never_allows_action_fact_to_be_omitted() -> None:
         (0,),
     ) == ()
 
-def test_single_line_title_plan_fact_cannot_be_covered_by_text() -> None:
+def test_single_line_title_plan_hint_can_be_covered_by_body_component() -> None:
     spec = task_spec()
     plan = {
         "info_required": [
@@ -922,10 +940,11 @@ def test_single_line_title_plan_fact_cannot_be_covered_by_text() -> None:
             }
         ]
     }
-    text_source = "\n".join(
+    body_source = "\n".join(
         [
             '["root","Column",{},["title"]]',
-            '["title","Text",{"content":{"path":"/data/calendar/events/0/title"}}]',
+            '["title","TextBlock",{"items":[{"label":"会议",'
+            '"value":{"path":"/data/calendar/events/0/title"}}]}]',
         ]
     )
     header_source = "\n".join(
@@ -936,14 +955,11 @@ def test_single_line_title_plan_fact_cannot_be_covered_by_text() -> None:
         ]
     )
 
-    assert compact_plan_coverage_errors(text_source, plan, spec) == (
-        "Plan title fact must be visible in a SingleLineTitle.title: "
-        "会议标题 (/data/calendar/events/0/title).",
-    )
+    assert compact_plan_coverage_errors(body_source, plan, spec) == ()
     assert compact_plan_coverage_errors(header_source, plan, spec) == ()
 
 
-def test_static_title_plan_fact_keeps_hard_title_placement_validation() -> None:
+def test_static_title_plan_hint_can_be_covered_by_body_component() -> None:
     spec = task_spec()
     plan = {
         "info_required": [
@@ -962,9 +978,7 @@ def test_static_title_plan_fact_keeps_hard_title_placement_validation() -> None:
         ]
     )
 
-    assert compact_plan_coverage_errors(source, plan, spec) == (
-        "Plan title fact must be visible in a SingleLineTitle.title: 卡片标题.",
-    )
+    assert compact_plan_coverage_errors(source, plan, spec) == ()
     assert compact_plan_coverage_warnings(source, plan, spec) == ()
 
 

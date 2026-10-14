@@ -20,6 +20,8 @@ type SummaryResult = {
   elapsed_ms?: number;
   attempts?: number;
   totalAttempts?: number;
+  repairAttemptsByRound?: Array<number | null>;
+  totalRepairAttempts?: number;
 };
 
 type Summary = {
@@ -459,6 +461,12 @@ function renderCase(item: RenderedCase): string {
   const selector = item.variants.length > 1
     ? `<label class="variantPicker"><span>查看版本</span><select data-variant-select>${item.variants.map(variant => `<option value="${escapeHtml(variant.key)}">${escapeHtml(variant.label)}</option>`).join("")}</select></label>`
     : `<span class="finalOnly">仅有最终结果</span>`;
+  const repairAttempts = item.repairAttemptsByRound?.length
+    ? item.repairAttemptsByRound
+      .map((count, index) => `第${index + 1}轮:${count ?? "未记录"}`)
+      .join(" / ")
+    : "未记录";
+  const totalRepairAttempts = item.totalRepairAttempts ?? "未记录";
 
   return `<article class="caseCard" data-case data-size="${item.size}" data-status="${item.status}" data-render="${renderStatus}" data-search="${escapeHtml(search)}">
     <header class="caseHead">
@@ -472,6 +480,8 @@ function renderCase(item: RenderedCase): string {
       <span>耗时 <b>${Math.round(item.elapsed_ms ?? 0)} ms</b></span>
       <span>本轮尝试 <b>${item.attempts ?? 0}</b></span>
       <span>累计尝试 <b>${item.totalAttempts ?? item.attempts ?? 0}</b></span>
+      <span>修复总计 <b>${escapeHtml(String(totalRepairAttempts))}</b></span>
+      <span>各轮修复 <b>${escapeHtml(repairAttempts)}</b></span>
       <span>Rejected <b>${item.variants.length - 1}</b></span>
     </div>
     <div class="detailsStack finalDiagnostics">

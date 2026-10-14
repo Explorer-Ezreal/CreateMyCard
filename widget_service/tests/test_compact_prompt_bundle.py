@@ -120,7 +120,8 @@ def test_anchor_layout_requires_main_and_nonempty_support_information() -> None:
 
     assert isinstance(create_prompt, str)
     assert isinstance(plan_prompt, str)
-    assert "一个主信息组与至少一个可由核心组件承载的独立其它信息组" in create_prompt
+    assert "一个主信息组与至少一个独立其它信息组" in create_prompt
+    assert "左下可以使用 `SecondaryBody` 承载辅助事实" in create_prompt
     assert "不要求固定三项，但至少一项" in create_prompt
     assert "只在标题中展示的地点、对象或范围上下文不计入" in create_prompt
     assert "没有独立支撑事实时排除 `S-title-anchor`" in create_prompt
@@ -173,7 +174,7 @@ def test_owned_action_layout_comparison_is_size_scoped_and_reaches_plan(size: st
         assert "紧凑区容量不成立时仍比较其它合法布局，不强行分区" in system
 def test_secondary_body_repair_does_not_add_non_core_companions() -> None:
     repair_prompt = read_prompt(DEFAULT_SOURCE, "repair", size="2x2")
-    assert "`SecondaryBody` 只能辅助同一语义分区内的核心信息组件" in repair_prompt
+    assert "`SecondaryBody` 只能辅助整卡中已存在的核心信息组件" in repair_prompt
     assert "不能通过增加按钮、标题或另一个" in repair_prompt
 
 
