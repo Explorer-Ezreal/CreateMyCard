@@ -21,6 +21,7 @@ def _collect_text_width_budget_errors(
     protocol_profile: dict[str, Any] | None,
     *,
     include_label_pressure: bool = False,
+    warnings: list[str] | None = None,
 ) -> None:
     """兜底明确单行超宽；自然宽度只用已知祖先内宽作上界，不猜实际尺寸。"""
     from services.compact_composition_context import small_card_display_text
@@ -101,6 +102,14 @@ def _collect_text_width_budget_errors(
         # 只反馈明显冲突，不把字符压力估计作为精确字体测量门禁。
         required = sum(font * (0.5 if ch.isascii() else 1.0) for ch in text)
         if available > 0 and required > available + 1e-7:
+            if _uses_visual_recipe_part(row, "InfoBlock.secondary"):
+                if warnings is not None:
+                    warnings.append(
+                        f"component {row.component_id}: InfoBlock.secondaryText exceeds its "
+                        f"{available:g}vp single-line text area and will be rendered with "
+                        "an ellipsis."
+                    )
+                continue
             errors.append(
                 f"component {row.component_id}: text width overflow; complete text {text!r} "
                 f"at original font {font:g} needs about {required:g}vp in one line, "

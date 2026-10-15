@@ -17,7 +17,7 @@ def test_wide_supporting_text_adapts_complete_label_and_value_before_budget(
         item["label"] = label
     rows = [
         ["root", "Layout", {"layout": "W-content-side-slots"}, ["body", "a", "b"]],
-        ["body", "Region", {"variant": "title-primary-details"}, ["title", "main", "detail"]],
+        ["body", "Region", {"variant": "title-hero-support"}, ["title", "main", "detail"]],
         ["title", "SingleLineTitle", {"title": "设备状态", "fontSize": 12}],
         ["main", "EmphasisText", {"mainText": "在线", "fontSize": 18}],
         ["detail", "SecondaryBody", {"items": [item], "fontSize": 12 if max_lines == 2 else 14}],

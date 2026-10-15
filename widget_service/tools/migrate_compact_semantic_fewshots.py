@@ -83,7 +83,7 @@ class Migration:
         content_children = [title]
         if body.component_type == "Column" and len(body.children) == 2:
             content_children.extend(self.content(child) for child in body.children)
-            variant = "title-hero-support-action" if action else "title-primary-details"
+            variant = "title-hero-support-action" if action else "title-hero-support"
         else:
             content_children.append(self.content(body_id))
             variant = "title-content-action" if action else "title-content"

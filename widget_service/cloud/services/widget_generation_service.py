@@ -1261,7 +1261,10 @@ class WidgetGenerationService:
                 skip_compact_dsl_validation=source_generated_by_template,
                 compact_plan=accepted_compact_plan,
                 allowed_omitted_plan_fact_indexes=(
-                    compact_repair_tracker.allowed_omitted_fact_indexes
+                    compact_repair_tracker.validation_omitted_fact_indexes(
+                        accepted_compact_plan,
+                        validate_drop_plan_facts=settings.enable_drop_plan_fact_validation,
+                    )
                     if compact_repair_tracker is not None
                     else ()
                 ),
@@ -1689,7 +1692,10 @@ class WidgetGenerationService:
                 latest_processing_result.source_dsl,
                 accepted_compact_plan,
                 task_spec.model_dump(mode="json", exclude_none=True),
-                compact_repair_tracker.allowed_omitted_fact_indexes,
+                compact_repair_tracker.validation_omitted_fact_indexes(
+                    accepted_compact_plan,
+                    validate_drop_plan_facts=settings.enable_drop_plan_fact_validation,
+                ),
             )
         omitted_requirements = [
             str(fact.get("requirement") or "") for fact in omitted_facts if fact.get("requirement")

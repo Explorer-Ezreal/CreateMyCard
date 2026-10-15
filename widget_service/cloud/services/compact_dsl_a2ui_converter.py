@@ -527,7 +527,7 @@ def repair_compact_dsl_binding_paths(
     card_spec: dict[str, Any],
     skip_compact_dsl_validation: bool = False,
 ) -> str:
-    """Repair unique data roots or safely inline unbacked local values."""
+    """Repair unique roots/path typos or safely inline unbacked local values."""
     rows = _parse_compact_rows(
         compact_dsl, skip_compact_dsl_validation=skip_compact_dsl_validation,
     )
@@ -552,14 +552,7 @@ def repair_compact_dsl_binding_paths(
     for path in dict.fromkeys(paths):
         if _schema_node_at_path(schema, path) is not None:
             continue
-        suffix = path
-        if path == "/data" or path.startswith("/data/"):
-            suffix = path[len("/data") :]
-        candidates: set[str] = set()
-        for root in roots:
-            candidate = f"{root.rstrip('/')}{suffix}"
-            if _schema_node_at_path(schema, candidate) is not None:
-                candidates.add(candidate)
+        candidates = _schema_binding_path_candidates(path, schema, roots)
         if len(candidates) == 1:
             path_replacements[path] = candidates.pop()
             continue
@@ -2240,6 +2233,34 @@ def _card_spec_data_roots(card_spec: dict[str, Any]) -> list[str]:
         if isinstance(root, str) and root.startswith("/"):
             roots.append(root)
     return roots
+
+
+def _schema_binding_path_candidates(
+    path: str,
+    schema: dict[str, Any],
+    roots: list[str],
+) -> set[str]:
+    """仅返回由单个常见语法笔误得到、且在 schema 中真实存在的唯一候选集合。"""
+    variants = [path]
+    if path.endswith("}"):
+        variants.append(path[:-1])
+    if path.startswith(("/data/", "/state/")):
+        for index, char in enumerate(path):
+            if char == ".":
+                variants.append(f"{path[:index]}/{path[index + 1:]}")
+
+    candidates: set[str] = set()
+    for variant in dict.fromkeys(variants):
+        if variant != path and _schema_node_at_path(schema, variant) is not None:
+            candidates.add(variant)
+        suffix = variant
+        if variant == "/data" or variant.startswith("/data/"):
+            suffix = variant[len("/data") :]
+        for root in roots:
+            candidate = f"{root.rstrip('/')}{suffix}"
+            if candidate != path and _schema_node_at_path(schema, candidate) is not None:
+                candidates.add(candidate)
+    return candidates
 
 
 def _candidate_asset_sources(task_spec: dict[str, Any]) -> set[str]:

@@ -53,7 +53,6 @@ type RenderedCase = SummaryResult & {
   userQuery: string;
   appVersion?: string;
   compactDsl: string;
-  rendererA2ui: string;
   cloudA2ui: string;
   componentTypes: string[];
   warnings: string[];
@@ -69,7 +68,6 @@ type RenderedVariant = {
   issues: string;
   componentTypes: string[];
   warnings: string[];
-  rendererA2ui: string;
   renderedMarkup: string;
   renderError: string;
   rejected: boolean;
@@ -291,7 +289,6 @@ async function loadRejectedVariants(
         issues: await readOptional(issuesPath),
         componentTypes: componentTypes(compactDsl),
         warnings: [],
-        rendererA2ui: "",
         renderedMarkup: "",
         renderError: "",
         rejected: true,
@@ -321,7 +318,6 @@ async function loadCase(
     issues: "",
     componentTypes: componentTypes(compactDsl),
     warnings: [],
-    rendererA2ui: "",
     renderedMarkup: "",
     renderError: "",
     rejected: false,
@@ -334,7 +330,6 @@ async function loadCase(
     userQuery: content.userQuery || input.userQuery || "",
     appVersion: content.appVersion || input.appVersion || input.deviceInfo?.prdVer,
     compactDsl,
-    rendererA2ui: "",
     cloudA2ui,
     componentTypes: componentTypes(compactDsl),
     warnings: [],
@@ -358,7 +353,6 @@ function renderVariant(
   }
   try {
     const compiled = compileA2uiJsonl(a2ui, { size });
-    variant.rendererA2ui = a2ui;
     variant.warnings = compiled.warnings;
     const markup = renderToStaticMarkup(
       renderTree(compiled.graph, defaultRegistry, {
@@ -406,7 +400,6 @@ async function renderCases(
       renderVariant(variant, item.size, dataUris, a2ui, conversion?.error);
     }
     const finalVariant = item.variants[0];
-    item.rendererA2ui = finalVariant.rendererA2ui;
     item.warnings = finalVariant.warnings;
     item.renderedMarkup = finalVariant.renderedMarkup;
     item.renderError = finalVariant.renderError;
@@ -437,7 +430,6 @@ function renderVariantPanel(item: RenderedCase, variant: RenderedVariant, index:
     ${warnings}
     <div class="detailsStack">
       ${details(variant.rejected ? "Rejected Compact DSL" : "Compact DSL", variant.compactDsl, Boolean(variant.renderError))}
-      ${details("Renderer 展开的 A2UI", variant.rendererA2ui)}
       ${variant.issues ? details("当轮校验问题", variant.issues) : ""}
       ${variant.renderError ? details("Renderer 错误", variant.renderError, true) : ""}
     </div>
@@ -483,9 +475,6 @@ function renderCase(item: RenderedCase): string {
       <span>修复总计 <b>${escapeHtml(String(totalRepairAttempts))}</b></span>
       <span>各轮修复 <b>${escapeHtml(repairAttempts)}</b></span>
       <span>Rejected <b>${item.variants.length - 1}</b></span>
-    </div>
-    <div class="detailsStack finalDiagnostics">
-      ${details("云侧保存的 A2UI", item.cloudA2ui)}
     </div>
   </article>`;
 }

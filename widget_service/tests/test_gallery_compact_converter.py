@@ -39,4 +39,4 @@ def test_gallery_converter_expands_semantic_layout_and_isolates_bad_variants() -
     assert valid is not None
     assert invalid_result is not None
     assert "updateComponents" in valid.get("genui", "")
-    assert "expected child count" in invalid_result.get("error", "")
+    assert "子组件数量应为" in invalid_result.get("error", "")

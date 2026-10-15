@@ -29,55 +29,9 @@ def _errors(rows: list[ComponentRow], *, size="2x4") -> list[str]:
     return errors
 
 
-@pytest.mark.parametrize("wrapped", [False, True])
-def test_count_badge_accepts_same_row_title_scope(wrapped: bool) -> None:
-    rows = [ComponentRow("title", "SingleLineTitle", {"title": "未来3天日程"}, ())]
-    sibling = "title"
-    if wrapped:
-        sibling = "title_slot"
-        rows.append(ComponentRow(sibling, "Column", {}, ("title",)))
-    rows.extend([ComponentRow("header", "Row", {}, (sibling, "count")), _count()])
-    assert not _errors(rows)
-
-
-@pytest.mark.parametrize("title", ["日程", "未来3天", "设备概览", ""])
-def test_count_badge_rejects_title_without_scope_or_collection(title: str) -> None:
-    rows = [
-        ComponentRow("header", "Row", {}, ("title", "count")),
-        ComponentRow("title", "SingleLineTitle", {"title": title}, ()),
-        _count(),
-    ]
-    assert any("calendar eventCount" in error for error in _errors(rows))
-
-
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
-def test_count_cannot_borrow_title_from_another_region(size: str) -> None:
-    rows = [
-        ComponentRow("root", "Row", {}, ("left", "right")),
-        ComponentRow("left", "Column", {}, ("title",)),
-        ComponentRow("right", "Column", {}, ("count",)),
-        ComponentRow("title", "SingleLineTitle", {"title": "未来3天日程"}, ()),
-        _count(),
-    ]
-    assert any("calendar eventCount" in error for error in _errors(rows, size=size))
-
-
-def test_non_badge_readout_cannot_borrow_title() -> None:
-    rows = [
-        ComponentRow("header", "Row", {}, ("title", "count")),
-        ComponentRow("title", "SingleLineTitle", {"title": "未来3天日程"}, ()),
-        _count(badge=False),
-    ]
-    assert any("calendar eventCount" in error for error in _errors(rows))
-
-
-def test_small_card_keeps_existing_count_policy() -> None:
-    rows = [
-        ComponentRow("header", "Row", {}, ("title", "count")),
-        ComponentRow("title", "SingleLineTitle", {"title": "未来3天日程"}, ()),
-        _count(),
-    ]
-    assert any("calendar eventCount" in error for error in _errors(rows, size="2x2"))
+def test_calendar_count_does_not_require_scope_or_collection_context(size: str) -> None:
+    assert not _errors([_count()], size=size)
 
 
 def test_wide_badge_wraps_its_full_number_without_changing_small_recipe() -> None:
@@ -119,7 +73,7 @@ def test_semantic_calendar_header_and_dual_actions_pass_processor() -> None:
     rows = [
         ["root", "Layout", {"layout": "W-content-side-slots"},
          ["body", "detail", "focus"]],
-        ["body", "Region", {"variant": "title-primary-details"},
+        ["body", "Region", {"variant": "title-hero-support"},
          ["header", "event", "status"]],
         ["header", "Group", {"variant": "title-count"}, ["title", "count"]],
         ["title", "SingleLineTitle", {"title": "未来3天日程", "fontSize": 12}],

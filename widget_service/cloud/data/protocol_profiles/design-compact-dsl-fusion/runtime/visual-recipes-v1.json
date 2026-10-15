@@ -262,7 +262,7 @@
       "alignment": "aligned",
       "metrics": {
         "minimumItems": 1,
-        "maximumItems": 4
+        "maximumItems": 6
       },
       "parts": {
         "root": {
@@ -729,6 +729,7 @@
             "fontSize": 10,
             "fontWeight": 500,
             "maxLines": 1,
+            "textOverflow": "ellipsis",
             "flexShrink": 1,
             "constraintSize": {
               "minWidth": 0
