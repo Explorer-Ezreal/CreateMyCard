@@ -115,5 +115,5 @@ def test_over_budget_title_and_button_do_not_shrink_minimum_ring() -> None:
 
 def test_author_geometry_is_still_rejected() -> None:
     source = _source("four-ratios").replace('"externalText":', '"width": 62, "externalText":', 1)
-    with pytest.raises(CompactDslConversionError, match="business geometry is template-owned"):
+    with pytest.raises(CompactDslConversionError, match="业务几何由模板负责"):
         parse_compact_dsl_rows(source, size="2x4")

@@ -262,11 +262,25 @@ def build_compact_plan_tool(
             },
             "maxItems": max_layout_hints,
             "uniqueItems": True,
-            "description": layout_description,
+            "description": (
+                f"{layout_description}仅填写枚举中的完整父布局 ID，"
+                "不填写 Region/Group 变体，不使用简称。"
+            ),
         },
     }
     required = ["info_required"]
     description = "提交卡片信息与操作的优先级；组件和布局只提供软候选。"
+    description += (
+        "Layout、Region、Group 的名称及 variant 只能逐字使用当前尺寸文档登记的完整值，"
+        "不得自行缩写、拼接或增删后缀。选择布局候选前确认全部必要事实与动作都有合法落点。"
+    )
+    if size == "2x4":
+        description += (
+            "标题＋主内容＋辅助内容使用 Region 的 title-hero-support，"
+            "children 为 [title, hero, support]；Group 的 hero-support 只有 [hero, support]。"
+            "Region 的 title-hero-support-action 必须包含第四项 PillButton；"
+            "没有内部按钮时选择已登记的 title-hero-support。"
+        )
     if asset_ids:
         assignment_properties = {
             "assetId": {
@@ -795,6 +809,12 @@ def parse_compact_plan_call(
         task_spec.get("size"),
     )
     warnings.extend(dual_action_warnings)
+    layout_hints, action_layout_warnings = _normalize_two_by_four_action_layouts(
+        facts,
+        layout_hints,
+        task_spec.get("size"),
+    )
+    warnings.extend(action_layout_warnings)
     if layout_hints:
         plan["layoutHints"] = layout_hints
     composition = None
@@ -1811,6 +1831,24 @@ def _is_two_by_two_dual_action_plan(
         if isinstance(fact.get("actionId"), str):
             action_count += 1
     return action_count == 2
+
+
+def _normalize_two_by_four_action_layouts(
+    facts: list[dict[str, Any]],
+    layout_hints: list[str],
+    size: Any,
+) -> tuple[list[str], list[str]]:
+    """移除无法承载 2x4 显式动作的无动作布局软候选。"""
+    has_action = any(isinstance(fact.get("actionId"), str) for fact in facts)
+    if size != "2x4" or not has_action or "W-top-bottom" not in layout_hints:
+        return layout_hints, []
+
+    accepted = [layout for layout in layout_hints if layout != "W-top-bottom"]
+    warning = (
+        "W-top-bottom was removed from layoutHints because the 2x4 Plan contains "
+        "an Action and this layout has no legal action slot."
+    )
+    return accepted, [warning]
 
 
 def _parse_json_object(

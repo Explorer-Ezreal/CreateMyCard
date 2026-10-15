@@ -608,9 +608,11 @@ def _secondary_body_items(component: ComponentRow) -> list[dict[str, Any]]:
     )
     _require_color(component, "fontColor")
     items = component.props.get("items")
-    if not isinstance(items, list) or not 1 <= len(items) <= 4:
+    if not isinstance(items, list) or not 1 <= len(items) <= 6:
+        count_detail = f" (got {len(items)})" if isinstance(items, list) else ""
         raise CompactDslConversionError(
-            f"{component.component_id}: SecondaryBody.items requires 1 to 4 entries."
+            f"{component.component_id}: SecondaryBody.items requires 1 to 6 entries"
+            f"{count_detail}."
         )
     # 旧 DSL 的 role 只作为兼容输入忽略，不参与样式、容量或标签校验。
     columns = component.props.get("columns", 2)

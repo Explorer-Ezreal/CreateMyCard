@@ -45,7 +45,7 @@ def _leaf(identifier: str, kind: str = "EmphasisText") -> list:
 
 def _region(identifier: str, variant: str) -> list[list]:
     children = {"center": ["a"], "title-content": ["title", "a"],
-                "title-primary-details": ["title", "a", "b"],
+                "title-hero-support": ["title", "a", "b"],
                 "title-content-action": ["title", "a", "action"],
                 "title-hero-support-action": ["title", "a", "b", "action"],
                 "title-two-ratios": ["title", "ring1", "ring2"],
@@ -67,7 +67,7 @@ def _region(identifier: str, variant: str) -> list[list]:
     return [[identifier, "Region", {"variant": variant}, ids], *rows]
 
 
-@pytest.mark.parametrize("variant", ["center", "title-content", "title-primary-details",
+@pytest.mark.parametrize("variant", ["center", "title-content", "title-hero-support",
                                      "title-content-action"])
 def test_compact_region_variants_match_original_split_contract(variant: str) -> None:
     rows = [["root", "Layout", {"layout": "W-split-panels"}, ["left", "right"]]]
@@ -79,6 +79,20 @@ def test_compact_region_variants_match_original_split_contract(variant: str) -> 
     assert match.layout_id == "W-split-panels"
 
 
+@pytest.mark.parametrize("layout", ["W-split-panels", "W-content-side-slots"])
+def test_title_hero_support_does_not_keep_the_previous_name_as_an_alias(layout: str) -> None:
+    region = _region("content", "title-hero-support")
+    region[0][2]["variant"] = "title-primary-details"
+    if layout == "W-split-panels":
+        rows = [["root", "Layout", {"layout": layout}, ["content", "right"]],
+                *region, *_region("right", "center")]
+    else:
+        rows = [["root", "Layout", {"layout": layout}, ["content", "upper", "lower"]],
+                *region, _leaf("upper", "InfoBlock"), _leaf("lower", "CardButton")]
+    with pytest.raises(CompactDslConversionError, match="当前父区域不支持 Region.variant"):
+        parse_compact_dsl_rows(_source(rows), size="2x4")
+
+
 def test_region_child_count_feedback_reports_ordered_roles() -> None:
     left = _region("left", "title-content-action")
     left[0][3].append("extra")
@@ -87,10 +101,10 @@ def test_region_child_count_feedback_reports_ordered_roles() -> None:
     with pytest.raises(CompactDslConversionError) as caught:
         parse_compact_dsl_rows(_source(rows), size="2x4")
     message = str(caught.value)
-    assert "expected child count [3], got 4" in message
+    assert "子组件数量应为 [3]，实际为 4" in message
     assert "Region.variant='title-content-action'" in message
-    assert "requires children [title, content, PillButton]" in message
-    assert "do not edit expanded geometry" in message
+    assert "要求的 children 角色为 [title, content, PillButton]" in message
+    assert "不要修改展开后的几何" in message
 
 
 def test_parent_child_count_feedback_reports_content_and_two_fixed_slots() -> None:
@@ -101,8 +115,8 @@ def test_parent_child_count_feedback_reports_content_and_two_fixed_slots() -> No
     with pytest.raises(CompactDslConversionError) as caught:
         parse_compact_dsl_rows(_source(rows), size="2x4")
     message = str(caught.value)
-    assert "expected child count [3], got 4" in message
-    assert "[content Region, upper InfoBlock/CardButton, lower InfoBlock/CardButton]" in message
+    assert "子组件数量应为 [3]，实际为 4" in message
+    assert "[内容 Region, 上方 InfoBlock/CardButton, 下方 InfoBlock/CardButton]" in message
 
 
 def test_region_variant_feedback_reports_only_current_parent_options() -> None:
@@ -111,14 +125,14 @@ def test_region_variant_feedback_reports_only_current_parent_options() -> None:
     with pytest.raises(CompactDslConversionError) as caught:
         parse_compact_dsl_rows(_source(rows), size="2x4")
     message = str(caught.value)
-    assert "got 'title-hero-support-action'" in message
-    options = message.split("compact Region variants: ", 1)[1]
-    assert "center, title-content, title-content-action, title-primary-details" in options
+    assert "实际为 'title-hero-support-action'" in message
+    options = message.split("紧凑版 Region 允许的变体：", 1)[1]
+    assert "center, title-content, title-content-action, title-hero-support" in options
     assert "title-two-ratios" not in options
     assert "four-ratios" not in options
 
 
-@pytest.mark.parametrize("variant", ["center", "title-content", "title-primary-details",
+@pytest.mark.parametrize("variant", ["center", "title-content", "title-hero-support",
                                      "title-content-action", "title-two-ratios",
                                      "title-hero-support-action", "four-ratios"])
 @pytest.mark.parametrize("orientation", ["content-left", "content-right"])
@@ -188,14 +202,14 @@ def test_business_ids_bindings_events_and_data_rows_are_preserved() -> None:
 def test_semantic_layout_rejects_geometry_overrides(property_name: str) -> None:
     rows = [["root", "Layout", {"layout": "W-split-panels", property_name: 1}, ["left", "right"]],
             *_region("left", "center"), *_region("right", "center")]
-    with pytest.raises(CompactDslConversionError, match="unsupported semantic properties"):
+    with pytest.raises(CompactDslConversionError, match="不支持以下语义属性"):
         parse_compact_dsl_rows(_source(rows))
 
 
 def test_semantic_layout_is_not_accepted_for_two_by_two() -> None:
     source = _source([["root", "Layout", {"layout": "W-four-slots"}, ["a", "b", "c", "d"]],
                       *[_leaf(identifier, "InfoBlock") for identifier in ["a", "b", "c", "d"]]])
-    with pytest.raises(CompactDslConversionError, match="only for size 2x4"):
+    with pytest.raises(CompactDslConversionError, match="仅适用于尺寸 2x4"):
         convert_compact_dsl_to_a2ui(source, size="2x2")
 
 
@@ -293,7 +307,7 @@ def test_region_does_not_hide_an_extra_button_inside_group() -> None:
             ["left", "Region", {"variant": "center"}, ["group"]],
             ["group", "Group", {"variant": "hero-support"}, ["a", "extra"]],
             _leaf("a"), _leaf("extra", "PillButton"), *_region("right", "center")]
-    with pytest.raises(CompactDslConversionError, match="bottom-action role"):
+    with pytest.raises(CompactDslConversionError, match="底部动作角色"):
         parse_compact_dsl_rows(_source(rows))
 
 

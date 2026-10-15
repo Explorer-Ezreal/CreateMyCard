@@ -128,6 +128,7 @@ def validate_compact_dsl(
         task_spec,
         compact_plan,
         binding_contract_errors,
+        size=size if isinstance(size, str) else None,
     )
     if enforce_model_component_types:
         collect_secondary_body_context_errors(components, binding_contract_errors)
@@ -150,6 +151,7 @@ def validate_compact_dsl(
     binding_paths = context.binding_paths
     visible_binding_paths = context.visible_binding_paths
     errors = DiagnosticCollector()
+    warnings: list[str] = []
     _collect_asset_source_errors(components, task_spec, errors)
     _collect_component_contract_errors(components, task_spec, errors)
     _collect_ambiguous_metric_text_errors(
@@ -165,6 +167,7 @@ def validate_compact_dsl(
     _collect_text_width_budget_errors(
         budget_components, task_spec, card_spec, errors, protocol_profile,
         include_label_pressure=(card_spec.get("suggestSize") or task_spec.get("size")) == "2x4",
+        warnings=warnings,
     )
     for component in components:
         location = f"component {component.component_id}.props"
@@ -181,8 +184,8 @@ def validate_compact_dsl(
     errors.extend(layout_errors)
     if errors:
         raise _validation_error(errors, context, repair_context)
-    warnings = _unused_data_capability_warnings(binding_paths, card_spec)
-    return CompactDslValidationResult(warnings=tuple(warnings))
+    warnings.extend(_unused_data_capability_warnings(binding_paths, card_spec))
+    return CompactDslValidationResult(warnings=tuple(dict.fromkeys(warnings)))
 
 
 def _validation_error(

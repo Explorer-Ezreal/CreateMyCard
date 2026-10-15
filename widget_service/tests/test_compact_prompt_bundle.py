@@ -345,13 +345,39 @@ def test_two_by_four_layout_prompt_delegates_geometry_to_semantic_templates() ->
     for sub_layout in (
         "center",
         "title-content",
-        "title-primary-details",
+        "title-hero-support",
         "title-content-action",
         "title-two-ratios",
         "title-hero-support-action",
         "four-ratios",
+        "four-items",
     ):
         assert sub_layout in layouts
+
+    create_prompt = assemble_prompts(DEFAULT_SOURCE, size="2x4").get("create")
+    assert isinstance(create_prompt, str)
+    for naming_rule in (
+        "不自行缩写、拼接或增删后缀",
+        "Group 的 `hero-support` 只有 `[hero, support]`",
+        "第四项 PillButton",
+        "没有内部按钮时选择已登记的 `title-hero-support`",
+    ):
+        assert naming_rule in layouts
+        assert naming_rule in create_prompt
+
+    for example_rule in (
+        "本章的genui片段只展示布局层，不是可直接提交的完整DSL",
+        "先选父区，再按直属角色选variant",
+        "第二、第三个是固定槽，不是另外两个Region",
+        "children数量按直属组件ID计",
+        "紧凑与宽版都支持的四种Region结构",
+        "仅宽版支持的四种Region结构",
+        "四行SecondaryBody至少占70vp",
+        "四格，不是父布局W-four-slots",
+        "否则形成多个父节点",
+    ):
+        assert example_rule in layouts
+        assert example_rule in create_prompt
 
     for removed_preset in (
         "neutral-footer",

@@ -21,11 +21,19 @@ def collect_plan_contract_errors(
     task_spec: dict[str, Any],
     compact_plan: dict[str, Any] | None,
     errors: list[str],
+    *,
+    size: str | None,
 ) -> None:
     """校验模型输出对 Plan 素材分配和语义分区的落实情况。"""
     _collect_title_icon_contract_errors(components, errors)
     _collect_title_button_icon_conflict_errors(components, errors)
-    _collect_plan_asset_assignment_errors(components, task_spec, compact_plan, errors)
+    _collect_plan_asset_assignment_errors(
+        components,
+        task_spec,
+        compact_plan,
+        errors,
+        size=size,
+    )
     _collect_anchor_support_errors(components, compact_plan, errors)
 
 
@@ -107,6 +115,8 @@ def _collect_plan_asset_assignment_errors(
     task_spec: dict[str, Any],
     compact_plan: dict[str, Any] | None,
     errors: list[str],
+    *,
+    size: str | None,
 ) -> None:
     """确保 DSL 落实 Plan 已接受的按钮优先、标题随后素材分配。"""
     if not isinstance(compact_plan, dict):
@@ -155,6 +165,8 @@ def _collect_plan_asset_assignment_errors(
                     f"{expected_source!r}."
                 )
 
+    if size != "2x2":
+        return
     title_assignment = assignments.get("title")
     if not isinstance(title_assignment, dict):
         return

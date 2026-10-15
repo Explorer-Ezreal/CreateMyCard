@@ -18,7 +18,7 @@ LAYOUT_IDS = frozenset({
     "W-top-bottom", "W-split-panels", "W-content-side-slots", "W-four-slots",
 })
 COMPACT_VARIANTS = frozenset({
-    "center", "title-content", "title-primary-details", "title-content-action",
+    "center", "title-content", "title-hero-support", "title-content-action",
 })
 WIDE_VARIANTS = COMPACT_VARIANTS | {
     "title-two-ratios", "title-hero-support-action", "four-ratios", "four-items",
@@ -47,16 +47,16 @@ SMALL_CHILD_ROLES = {
 _CHILD_ROLES = {
     "Layout": {
         "W-top-bottom": "[title?, primary, details]",
-        "W-split-panels": "[left Region, right Region]",
+        "W-split-panels": "[左侧 Region, 右侧 Region]",
         "W-content-side-slots": (
-            "[content Region, upper InfoBlock/CardButton, lower InfoBlock/CardButton]"
+            "[内容 Region, 上方 InfoBlock/CardButton, 下方 InfoBlock/CardButton]"
         ),
-        "W-four-slots": "[top-left slot, top-right slot, bottom-left slot, bottom-right slot]",
+        "W-four-slots": "[左上槽、右上槽、左下槽、右下槽]",
     },
     "Region": {
         "center": "[content]",
         "title-content": "[title, content]",
-        "title-primary-details": "[title, primary, details]",
+        "title-hero-support": "[title, hero, support]",
         "title-content-action": "[title, content, PillButton]",
         "title-two-ratios": "[title, ProgressCircle, ProgressCircle, PillButton?]",
         "title-hero-support-action": "[title, hero, support, PillButton]",
@@ -86,15 +86,15 @@ def has_semantic_layout(rows: list[CompactRow] | tuple[CompactRow, ...]) -> bool
 
 def _fail(identifier: str, message: str) -> NoReturn:
     raise CompactDslConversionError(
-        f"layout does not match semantic contract: {identifier}: {message}. "
-        "Choose a registered Layout/Region/Group variant; do not edit expanded geometry."
+        f"语义布局不符合合同：节点 {identifier}：{message}。"
+        "请选择已登记的 Layout、Region 或 Group 变体，不要修改展开后的几何。"
     )
 
 
 def _prop_fail(identifier: str, message: str) -> NoReturn:
     raise CompactDslConversionError(
-        f"component {identifier}: invalid semantic props: {message}. "
-        "Fix only the reported properties; preserve the current layout, facts and Actions."
+        f"组件 {identifier} 的语义属性无效：{message}。"
+        "只修复已报告的属性，并保留当前布局、事实和 Action。"
     )
 
 
@@ -114,11 +114,11 @@ class _Compiler:
 
     def validate_tree(self, identifier: str, visiting: set[str], visited: set[str]) -> None:
         if identifier in visiting:
-            _fail(identifier, "cyclic component reference")
+            _fail(identifier, "组件引用形成循环")
         if identifier in visited:
-            _fail(identifier, "component has multiple parents")
+            _fail(identifier, "组件被多个父节点同时引用")
         if len(visiting) >= 64:
-            _fail(identifier, "semantic tree nesting exceeds safe depth")
+            _fail(identifier, "语义组件树嵌套超过安全深度")
         row = self.node(identifier)
         visiting.add(identifier)
         for child in row.children:
@@ -129,13 +129,13 @@ class _Compiler:
     def node(self, identifier: str) -> ComponentRow:
         row = self.by_id.get(identifier)
         if row is None:
-            _fail(identifier, "missing component reference")
+            _fail(identifier, "引用了不存在的组件")
         return row
 
     def generated(self, origin: str, suffix: str) -> str:
         identifier = f"{GENERATED_PREFIX}{origin}__{suffix}"
         if identifier in self.by_id or identifier in self.origins:
-            _fail(origin, "generated component id collision")
+            _fail(origin, "生成的组件 ID 发生冲突")
         self.origins[identifier] = origin
         return identifier
 
@@ -148,19 +148,23 @@ class _Compiler:
     def props(row: ComponentRow, allowed: set[str] | frozenset[str]) -> None:
         unknown = set(row.props) - allowed
         if unknown:
-            _prop_fail(row.component_id, "unsupported semantic properties " +
-                       ", ".join(sorted(unknown)))
+            _prop_fail(
+                row.component_id,
+                "不支持以下语义属性：" + ", ".join(sorted(unknown)),
+            )
 
     @staticmethod
     def count(row: ComponentRow, allowed: set[int]) -> None:
         if len(row.children) not in allowed:
-            message = f"expected child count {sorted(allowed)}, got {len(row.children)}"
+            message = f"子组件数量应为 {sorted(allowed)}，实际为 {len(row.children)}"
             key = "layout" if row.component_type == "Layout" else "variant"
             name = row.props.get(key)
             roles_by_name = _CHILD_ROLES.get(row.component_type, {})
             roles = roles_by_name.get(name) if isinstance(name, str) else None
             if roles is not None:
-                message += f"; {row.component_type}.{key}={name!r} requires children {roles}"
+                message += (
+                    f"；{row.component_type}.{key}={name!r} 要求的 children 角色为 {roles}"
+                )
             _fail(row.component_id, message)
 
     def title(self, identifier: str) -> None:
@@ -169,7 +173,7 @@ class _Compiler:
             return
         if row.component_type == "Group" and row.props.get("variant") == "title-count":
             return
-        _fail(identifier, "title slot requires a title component or title-count Group")
+        _fail(identifier, "标题槽必须使用标题组件或 title-count Group")
 
     def wrap(self, origin: str, suffix: str, child: str, props: dict) -> str:
         identifier = self.generated(origin, suffix)
@@ -187,19 +191,21 @@ class _Compiler:
     def content(self, identifier: str, *, compact: bool, fixed: bool = False) -> None:
         row = self.node(identifier)
         if identifier in self.seen:
-            _fail(identifier, "component has multiple parents")
+            _fail(identifier, "组件被多个父节点同时引用")
         self.seen.add(identifier)
         if row.component_type == "Group":
             self.group(row, compact=compact, fixed=fixed)
             return
         if row.component_type in {"Layout", "Region", "Row", "Column", "Stack"}:
-            _fail(identifier, "content slot requires a business component or controlled Group")
+            _fail(identifier, "内容槽必须使用业务组件或受控 Group")
         unknown = GEOMETRY_PROPS.intersection(row.props)
         if unknown:
-            _prop_fail(identifier, "business geometry is template-owned: " +
-                       ", ".join(sorted(unknown)))
+            _prop_fail(
+                identifier,
+                "以下业务几何由模板负责，模型不能声明：" + ", ".join(sorted(unknown)),
+            )
         if row.children:
-            _fail(identifier, "business component cannot have children")
+            _fail(identifier, "业务组件不能声明 children")
         props = deepcopy(row.props)
         if fixed:
             props.update(width="matchParent", height="matchParent", layoutWeight=1)
@@ -211,18 +217,18 @@ class _Compiler:
         variant = row.props.get("variant")
         group_variants = {"hero-support", "label-value", "peer-pair", "title-count"}
         if not isinstance(variant, str) or variant not in group_variants:
-            _fail(row.component_id, "unknown Group.variant")
+            _fail(row.component_id, "Group.variant 未登记")
         if fixed and self.action_nodes(row.children):
-            _fail(row.component_id, "action fixed slot requires one complete CardButton")
+            _fail(row.component_id, "动作固定槽必须使用一个完整的 CardButton")
         props = {"width": "matchParent", "alignItems": "start", "justifyContent": "start",
                  "itemMargin": 2}
         children = row.children
         kind = "Column"
         if variant == "title-count":
             if self.node(children[0]).component_type != "SingleLineTitle":
-                _fail(row.component_id, "title-count starts with SingleLineTitle")
+                _fail(row.component_id, "title-count 的第一个子组件必须是 SingleLineTitle")
             if self.node(children[1]).component_type != "Badge":
-                _fail(row.component_id, "title-count ends with Badge")
+                _fail(row.component_id, "title-count 的最后一个子组件必须是 Badge")
             kind = "Row"
             props.update(itemMargin=4, alignItems="center")
             title = self.wrap(row.component_id, "title", children[0], {"layoutWeight": 1})
@@ -244,18 +250,19 @@ class _Compiler:
     def region(self, identifier: str, *, compact: bool) -> None:
         row = self.node(identifier)
         if row.component_type != "Region":
-            _fail(identifier, "parent content area requires Region")
+            _fail(identifier, "父级内容区必须使用 Region")
         self.props(row, {"variant"})
         variant = row.props.get("variant")
         allowed = COMPACT_VARIANTS if compact else WIDE_VARIANTS
         if not isinstance(variant, str) or variant not in allowed:
             area = "compact" if compact else "wide"
+            area_label = "紧凑版" if area == "compact" else "宽版"
             message = (
-                f"Region.variant is not supported in this parent area (got {variant!r}); "
-                f"{area} Region variants: " + ", ".join(sorted(allowed))
+                f"当前父区域不支持 Region.variant（实际为 {variant!r}）；"
+                f"{area_label} Region 允许的变体：" + ", ".join(sorted(allowed))
             )
             _fail(identifier, message)
-        expected = {"center": {1}, "title-content": {2}, "title-primary-details": {3},
+        expected = {"center": {1}, "title-content": {2}, "title-hero-support": {3},
                     "title-content-action": {3}, "title-two-ratios": {3, 4},
                     "title-hero-support-action": {4}, "four-ratios": {4}, "four-items": {4}}
         self.count(row, expected.get(variant, set()))
@@ -265,19 +272,19 @@ class _Compiler:
             self.title(children[0])
         if variant in {"title-content-action", "title-hero-support-action"}:
             if self.node(children[-1]).component_type != "PillButton":
-                _fail(identifier, "bottom action requires PillButton")
+                _fail(identifier, "底部动作槽必须使用 PillButton")
         if variant == "title-two-ratios" and len(children) == 4:
             if self.node(children[-1]).component_type != "PillButton":
-                _fail(identifier, "optional bottom action requires PillButton")
+                _fail(identifier, "可选底部动作槽必须使用 PillButton")
         allowed_actions = ()
         if variant in {"title-content-action", "title-hero-support-action"}:
             allowed_actions = (children[-1],)
         elif variant == "title-two-ratios" and len(children) == 4:
             allowed_actions = (children[-1],)
         if self.action_nodes(children) != set(allowed_actions):
-            _fail(identifier, "Action must occupy the selected Region bottom-action role")
+            _fail(identifier, "Action 必须放在所选 Region 的底部动作角色中")
         if self.contains_type(children, "InfoBlock"):
-            _fail(identifier, "InfoBlock belongs only in fixed slots, not Region or its Groups")
+            _fail(identifier, "InfoBlock 只能放在固定槽，不能进入 Region 或其 Group")
         sub_id = self.generated(identifier, "sub")
         outer_props = {"width": "matchParent", "height": "matchParent", "layoutWeight": 1}
         if compact:
@@ -295,7 +302,7 @@ class _Compiler:
         elif variant == "title-content-action":
             body = self.body(identifier, (children[1],), 0, {})
             sub_children = (children[0], body, children[2])
-        elif variant == "title-primary-details":
+        elif variant == "title-hero-support":
             primary = self.wrap(identifier, "primary", children[1], {"layoutWeight": 1})
             details = self.wrap(identifier, "details", children[2], {"flexShrink": 0})
             body = self.body(identifier, (primary, details), gap, {})
@@ -314,7 +321,7 @@ class _Compiler:
         self.add(sub_id, "Column", sub_props, sub_children, identifier)
         for child in children:
             if self.node(child).component_type == "InfoBlock":
-                _fail(child, "InfoBlock belongs only in fixed slots")
+                _fail(child, "InfoBlock 只能放在固定槽")
             self.content(child, compact=compact)
 
     def ratios(self, origin: str, children: tuple[str, ...], *, grid: bool,
@@ -322,7 +329,7 @@ class _Compiler:
         cells = []
         for index, child in enumerate(children):
             if require_ratio and self.node(child).component_type != "ProgressCircle":
-                _fail(child, "ratio slot requires ProgressCircle")
+                _fail(child, "比例槽必须使用 ProgressCircle")
             cell = self.wrap(origin, f"ratio{index}", child,
                              {"height": "matchParent", "alignItems": "center",
                               "justifyContent": "center", "layoutWeight": 1})
@@ -375,7 +382,7 @@ class _Compiler:
                     if not all(isinstance(value, (int, float))
                                for value in (title_height, secondary_height, gap)):
                         _fail(row.component_id,
-                              "DoubleLineTitle recipe has unknown reference height")
+                              "DoubleLineTitle Recipe 缺少可确定的参考高度")
                     styles["height"] = title_height + secondary_height + gap
             nodes.append({"id": row.component_id, "component": row.component_type,
                           "styles": styles, "children": list(row.children)})
@@ -388,9 +395,9 @@ class _Compiler:
                 continue
             box = boxes.get(cell_id)
             if box is None or box.width is None or box.height is None:
-                _fail(row.component_id, "ratio slot has unknown reference dimensions")
+                _fail(row.component_id, "比例槽缺少可确定的参考尺寸")
             if box.width <= 0 or box.height <= 0:
-                _fail(row.component_id, "ratio slot has no positive reference capacity")
+                _fail(row.component_id, "比例槽没有有效的正数容量")
             props = {**row.props, "width": box.width, "height": box.height}
             resolved.append(ComponentRow(row.component_id, row.component_type, props, row.children))
         self.result = resolved
@@ -415,7 +422,7 @@ class _Compiler:
         self.count(root, {2, 3})
         variant = root.props.get("variant", "continuous")
         if not isinstance(variant, str) or variant not in {"continuous", "bottom-details", "equal"}:
-            _fail("root", "unknown W-top-bottom variant")
+            _fail("root", "W-top-bottom.variant 未登记")
         children = root.children
         title = ()
         if len(children) == 3:
@@ -423,10 +430,10 @@ class _Compiler:
             title = (children[0],)
         primary, details = children[-2:]
         if self.contains_type(children, "PillButton") or self.contains_type(children, "CardButton"):
-            _fail("root", "W-top-bottom does not have shared button roles")
+            _fail("root", "W-top-bottom 不提供共享按钮角色")
         details_type = self.node(details).component_type
         if details_type not in {"TextBlock", "TopTextBottomValue", "SummaryList"}:
-            _fail(details, "details slot requires TextBlock/TopTextBottomValue/SummaryList")
+            _fail(details, "details 槽必须使用 TextBlock、TopTextBottomValue 或 SummaryList")
         primary_props = {"flexShrink": 0} if variant == "continuous" else {"layoutWeight": 1}
         details_props = {"flexShrink": 0} if variant == "bottom-details" else {"layoutWeight": 1}
         primary_id = self.wrap("root", "primary", primary, primary_props)
@@ -442,7 +449,7 @@ class _Compiler:
         if combination:
             allowed.add("Group")
         if kind not in allowed:
-            _fail(identifier, "fixed slot requires InfoBlock/CardButton or registered slot Group")
+            _fail(identifier, "固定槽必须使用 InfoBlock、CardButton 或已登记的槽位 Group")
         self.content(identifier, compact=False, fixed=True)
 
     def compile(self) -> SemanticLayoutExpansion:
@@ -459,13 +466,13 @@ class _Compiler:
         self.parent_gap = root_props.get("itemMargin")
         self.panel_padding = panel_props.get("padding")
         if any(value is None for value in (self.padding, self.parent_gap, self.panel_padding)):
-            raise ValueError("2×4 registered layout geometry is incomplete")
+            raise ValueError("2×4 已登记布局的几何定义不完整")
         root = self.node("root")
         if root.component_type != "Layout":
-            _fail("root", "semantic tree must start with Layout")
+            _fail("root", "语义组件树的根节点必须是 Layout")
         layout = root.props.get("layout")
         if not isinstance(layout, str) or layout not in LAYOUT_IDS:
-            _fail("root", "unknown Layout.layout")
+            _fail("root", "Layout.layout 未登记")
         allowed_props = _BACKGROUND_PROPS | {"layout"}
         if layout == "W-top-bottom":
             allowed_props = allowed_props | {"variant"}
@@ -495,14 +502,14 @@ class _Compiler:
             orientation = root.props.get("orientation", "content-left")
             orientations = {"content-left", "content-right"}
             if not isinstance(orientation, str) or orientation not in orientations:
-                _fail("root", "unknown orientation")
+                _fail("root", "orientation 未登记")
             content, upper, lower = children
             self.region(content, compact=False)
             self.fixed_slot(upper, combination=False)
             self.fixed_slot(lower, combination=False)
             if self.node(upper).component_type == "CardButton":
                 if self.node(lower).component_type == "InfoBlock":
-                    _fail("root", "mixed fixed slots require InfoBlock above CardButton")
+                    _fail("root", "混合固定槽必须将 InfoBlock 放在 CardButton 上方")
             slots = self.generated("root", "slots")
             self.add(slots, "Column", {"width": "matchParent", "height": "matchParent",
                                        "itemMargin": self.parent_gap, "layoutWeight": 1},
@@ -530,7 +537,7 @@ class _Compiler:
         compiled = {row.component_id for row in self.result}
         missing = set(self.by_id) - compiled
         if missing:
-            _fail("root", "uncompiled component(s): " + ", ".join(sorted(missing)))
+            _fail("root", "以下组件未接入已展开的组件树：" + ", ".join(sorted(missing)))
         data_rows = []
         for row in self.source:
             if not isinstance(row, ComponentRow):
@@ -545,7 +552,7 @@ class _SmallCompiler(_Compiler):
 
     def title(self, identifier: str) -> None:
         if self.node(identifier).component_type != "SingleLineTitle":
-            _fail(identifier, "small title slot requires SingleLineTitle")
+            _fail(identifier, "小卡标题槽必须使用 SingleLineTitle")
 
     def content(self, identifier: str, *, compact: bool, fixed: bool = False) -> None:
         super().content(identifier, compact=compact, fixed=fixed)
@@ -559,19 +566,19 @@ class _SmallCompiler(_Compiler):
                     identifier, row.component_type, {**row.props, **props}, row.children,
                 )
                 return
-        _fail(identifier, "missing compiled slot")
+        _fail(identifier, "缺少已展开的槽位")
 
     def group(self, row: ComponentRow, *, compact: bool, fixed: bool = False) -> None:
         self.props(row, {"variant"})
         variant = row.props.get("variant")
         if not isinstance(variant, str):
-            _fail(row.component_id, "small Group.variant must be a registered string")
+            _fail(row.component_id, "小卡 Group.variant 必须是已登记的字符串")
         counts = {2, 3, 4} if variant == "supporting-items" else {2}
         self.count(row, counts)
         if variant not in {"hero-support", "label-value", "peer-pair", "supporting-items"}:
-            _fail(row.component_id, "unknown small Group.variant")
+            _fail(row.component_id, "小卡 Group.variant 未登记")
         if self.action_nodes(row.children) or self.contains_type(row.children, "InfoBlock"):
-            _fail(row.component_id, "small Group contains only same-region read-only content")
+            _fail(row.component_id, "小卡 Group 只能包含同一区域内的只读内容")
         props = {"width": "matchParent", "alignItems": "start",
                  "justifyContent": "start", "itemMargin": 2}
         children = row.children
@@ -591,7 +598,7 @@ class _SmallCompiler(_Compiler):
     def action(self, identifier: str, kind: str = "PillButton") -> None:
         row = self.node(identifier)
         if row.component_type != kind or not row.props.get("onClick"):
-            _fail(identifier, f"action role requires {kind} with onClick")
+            _fail(identifier, f"动作角色必须使用带 onClick 的 {kind}")
 
     def standard_action_body(self, primary: str, action: str, gap: int) -> str:
         content = self.wrap("root", "content", primary, {"layoutWeight": 1})
@@ -606,21 +613,24 @@ class _SmallCompiler(_Compiler):
         layout = root.props.get("layout")
         roles = SMALL_CHILD_ROLES.get(layout) if isinstance(layout, str) else None
         if root.component_type != "Layout" or roles is None:
-            _fail("root", "choose a registered S-series Layout for size 2x2")
+            _fail("root", "2x2 必须选择已登记的 S 系列 Layout")
         self.props(root, _BACKGROUND_PROPS | {"layout", "variant", "design", "onClick"})
         count, description = roles
         counts = {count, count + 1} if layout == "S-title-dual-column-action" else {count}
         if len(root.children) not in counts:
-            _fail("root", f"expected child count {sorted(counts)}; requires children {description}")
+            _fail(
+                "root",
+                f"子组件数量应为 {sorted(counts)}；要求的 children 角色为 {description}",
+            )
         contract = load_layout_contract()
         layouts = contract.get("layouts", {})
         registered = layouts.get(layout, {})
         patterns = registered.get("patterns", [])
         if not patterns:
-            raise ValueError("registered small layout geometry is incomplete")
+            raise ValueError("已登记小卡布局的几何定义不完整")
         rules = patterns[0].get("rules", [])
         if not rules:
-            raise ValueError("registered small layout rules are incomplete")
+            raise ValueError("已登记小卡布局的规则定义不完整")
         root_design = rules[0].get("props", {})
         props = {"width": "matchParent", "height": "matchParent", "borderRadius": 20,
                  "clip": True, "alignItems": "start", "justifyContent": "start", **root_design}
@@ -636,7 +646,7 @@ class _SmallCompiler(_Compiler):
         if layout == "S-title-dual-content":
             allowed.add("stacked-info")
         if not isinstance(variant, str) or variant not in allowed:
-            _fail("root", "allowed small variants: " + ", ".join(sorted(allowed)))
+            _fail("root", "小卡允许的 variant：" + ", ".join(sorted(allowed)))
         children = root.children
         expected_actions: set[str] = set()
         if layout.startswith("S-title-"):
@@ -654,15 +664,15 @@ class _SmallCompiler(_Compiler):
             self.action(children[-1])
             expected_actions.add(children[-1])
         if self.action_nodes(children) != expected_actions:
-            _fail("root", "Actions must occupy the selected small layout action roles")
+            _fail("root", "Action 必须放在所选小卡布局的动作角色中")
         for child in children:
             self.content(child, compact=True)
         if self.contains_type(children, "InfoBlock"):
             if layout not in {"S-dual-info", "S-title-dual-content"}:
-                _fail("root", "InfoBlock requires a registered small fixed slot")
+                _fail("root", "InfoBlock 必须放在已登记的小卡固定槽")
         if layout == "S-center":
             if self.node(children[0]).component_type != "DataDisplay":
-                _fail(children[0], "S-center requires one complete DataDisplay")
+                _fail(children[0], "S-center 必须使用一个完整的 DataDisplay")
         elif layout == "S-title-content":
             content = self.wrap("root", "content", children[1],
                                 {"layoutWeight": 1, "justifyContent": "end"})
@@ -672,14 +682,14 @@ class _SmallCompiler(_Compiler):
                 for child in children[1:]:
                     row = self.node(child)
                     if row.component_type != "InfoBlock" or row.props.get("visual"):
-                        _fail(child, "stacked-info requires two InfoBlock without visual")
+                        _fail(child, "stacked-info 必须使用两个不含 visual 的 InfoBlock")
                     if row.props.get("variant") != "stacked":
-                        _fail(child, "stacked-info requires InfoBlock.variant='stacked'")
+                        _fail(child, "stacked-info 要求 InfoBlock.variant='stacked'")
                     self.geometry(child, {"height": 50})
                 body = self.body("root", children[1:], 8, {"height": 108})
             else:
                 if self.contains_type(children[1:], "InfoBlock"):
-                    _fail("root", "two InfoBlock require stacked-info variant")
+                    _fail("root", "两个 InfoBlock 必须使用 stacked-info 变体")
                 primary = self.wrap("root", "primary", children[1], {"layoutWeight": 1})
                 support = self.wrap("root", "support", children[2],
                                     {"layoutWeight": 1, "justifyContent": "end"})
@@ -753,7 +763,7 @@ class _SmallCompiler(_Compiler):
         elif layout == "S-dual-info":
             for child in children:
                 if self.node(child).component_type != "InfoBlock":
-                    _fail(child, "S-dual-info requires two InfoBlock")
+                    _fail(child, "S-dual-info 必须使用两个 InfoBlock")
                 self.geometry(child, {"layoutWeight": 1})
         self.add("root", "Column", props, children, "root")
         return self.finish(layout)
@@ -770,6 +780,6 @@ def expand_semantic_layout_rows(
     inferred = "2x2" if isinstance(layout, str) and layout in SMALL_CHILD_ROLES else "2x4"
     target = inferred if size is None else size
     if target != inferred:
-        _fail("root", f"layout is available only for size {inferred}, not {target}")
+        _fail("root", f"该布局仅适用于尺寸 {inferred}，不能用于 {target}")
     compiler = _SmallCompiler(rows) if target == "2x2" else _Compiler(rows)
     return compiler.compile()

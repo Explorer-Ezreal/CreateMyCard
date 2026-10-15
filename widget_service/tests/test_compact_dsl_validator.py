@@ -774,6 +774,36 @@ def test_rejects_missing_plan_asset_assignment(
         )
 
 
+def test_allows_2x4_title_without_plan_assigned_icon() -> None:
+    task_spec = {
+        "size": "2x4",
+        "eventCandidates": [],
+        "dataModelSchema": {"data": {}},
+        "assetCandidates": [
+            {"id": "asset.weather", "src": "resources/weather.svg"},
+        ],
+    }
+    compact_plan = {
+        "assetAssignments": {
+            "actions": [],
+            "title": {"assetId": "asset.weather"},
+        }
+    }
+    compact_dsl = "\n".join(
+        [
+            '["root","Column",{},["header"]]',
+            '["header","SingleLineTitle",{"title":"天气","fontSize":12}]',
+        ]
+    )
+
+    validate_compact_dsl(
+        compact_dsl,
+        task_spec=task_spec,
+        card_spec={"suggestSize": "2x4", "dataBindings": []},
+        compact_plan=compact_plan,
+    )
+
+
 def test_design_processor_reports_compact_contract_as_validation() -> None:
     context = DslProcessingContext(
         size="2x2",

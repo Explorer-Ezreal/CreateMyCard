@@ -617,8 +617,9 @@ function expandHighLevel(
     const allowed = ["items", "role", "columns", "separator", "fontColor", "fontSize"];
     requireProps(id, type, p, ["items", "fontColor"], allowed);
     requireColor(id, type, p, "fontColor");
-    if (!Array.isArray(p.items) || p.items.length < 1 || p.items.length > 4) {
-      throw new Error(`${id}: SecondaryBody.items 需要 1–4 项。`);
+    if (!Array.isArray(p.items) || p.items.length < 1 || p.items.length > 6) {
+      const countDetail = Array.isArray(p.items) ? `，实际 ${p.items.length} 项` : "";
+      throw new Error(`${id}: SecondaryBody.items 需要 1–6 项${countDetail}。`);
     }
     // 历史 role 输入忽略；样式仅由行布局决定。
     const items = p.items.map((item, index) => {

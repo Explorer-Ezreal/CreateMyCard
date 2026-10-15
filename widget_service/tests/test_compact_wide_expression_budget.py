@@ -1,7 +1,11 @@
 """多字段已知文本不能因单路径解析限制而跳过宽度；不执行算术或未知表达式。"""
 
+import json
+
 import pytest
 
+from services.card_validation import validate_compact_dsl
+from services.card_validation.compact_validation.constants import _VISUAL_RECIPE_MARKER_PREFIX
 from services.card_validation.compact_validation.semantic.layout.text_width import (
     _collect_text_width_budget_errors,
 )
@@ -59,3 +63,65 @@ def test_boolean_two_state_copy_checks_longer_branch_without_running_expression(
     errors = _errors("{{ ${/data/ready} ? '就绪' : '需要更换滤芯' }}", schema, width=60)
     assert len(errors) == 1
     assert "需要更换滤芯" in errors[0]
+
+
+def test_infoblock_secondary_overflow_is_reported_as_warning() -> None:
+    rows = [
+        ComponentRow("root", "Column", {"width": 132, "height": 57}, ("secondary",)),
+        ComponentRow(
+            "secondary",
+            "Text",
+            {
+                "content": "时长 40分 · 消耗 260 千卡 · 心率 135/96 次/分钟",
+                "width": 116,
+                "fontSize": 12,
+                "maxLines": 1,
+                "textOverflow": "ellipsis",
+                "_visualRecipe": f"{_VISUAL_RECIPE_MARKER_PREFIX}InfoBlock.secondary",
+            },
+            (),
+        ),
+    ]
+    errors: list[str] = []
+    warnings: list[str] = []
+
+    _collect_text_width_budget_errors(
+        rows,
+        {"size": "2x4", "dataModelSchema": {"data": {}}},
+        {},
+        errors,
+        None,
+        warnings=warnings,
+    )
+
+    assert errors == []
+    assert len(warnings) == 1
+    assert "InfoBlock.secondaryText" in warnings[0]
+    assert "ellipsis" in warnings[0]
+
+
+def test_infoblock_secondary_overflow_does_not_reject_compact_dsl() -> None:
+    rows = [
+        ["root", "Column", {"width": 132, "height": 57}, ["info"]],
+        [
+            "info",
+            "InfoBlock",
+            {
+                "variant": "slot",
+                "primaryText": "户外跑步",
+                "secondaryText": "时长 40分 · 消耗 260 千卡 · 心率 135/96 次/分钟",
+                "fontColor": "#FF8C4B1C",
+                "backgroundColor": "#99FFFFFF",
+            },
+        ],
+    ]
+    source = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+
+    result = validate_compact_dsl(
+        source,
+        task_spec={"size": "2x4", "dataModelSchema": {"data": {}}},
+        card_spec={},
+    )
+
+    assert len(result.warnings) == 1
+    assert "InfoBlock.secondaryText" in result.warnings[0]

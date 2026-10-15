@@ -438,6 +438,39 @@ test("SecondaryBody 保留绑定、按行布局切换字号并忽略历史角色
   assert.equal(multilineStyles.maxLines, 2);
 });
 
+test("SecondaryBody 支持 1–6 项，保留全部绑定并拒绝超过上限", () => {
+  for (const size of ["2x2", "2x4"] as const) {
+    for (const columns of [1, 2]) {
+      for (const count of [1, 4, 5, 6]) {
+        const items = Array.from({ length: count }, (_, index) => ({
+          label: `项${index} `, value: { path: `/data/detail${index}` },
+        }));
+        const dataRows = items.map((item, index) => JSON.stringify([item.value.path, `${index}项`]));
+        const source = [
+          JSON.stringify(["root", "Column", { width: "matchParent" }, ["details"]]),
+          JSON.stringify(["details", "SecondaryBody", {
+            items, columns, fontSize: count === 1 ? 14 : 12,
+          }]),
+          ...dataRows,
+        ].join("\n");
+        const graph = compileMiniDsl(source, { size }).graph;
+        for (const [index, item] of items.entries()) {
+          const props = graph.getNode(`details_item${index}_value`)?.props;
+          assert.deepEqual(props?.content, item.value);
+          const styles = props?.styles as Record<string, unknown>;
+          assert.equal(styles.fontSize, count === 1 ? 14 : 12);
+          assert.equal(styles.height, count === 1 ? 19 : 16);
+        }
+      }
+    }
+  }
+  for (const count of [0, 7]) {
+    const items = Array.from({ length: count }, () => ({ value: "补充" }));
+    assert.throws(() => compileMiniDsl(JSON.stringify(["root", "SecondaryBody", { items }])),
+      new RegExp(`SecondaryBody.items 需要 1–6 项，实际 ${count} 项`));
+  }
+});
+
 test("SecondaryBody 按完整日期与星期自动分行，宽槽保留自然占宽和分隔空格", () => {
   const source = [
     '["root","Column",{"width":"matchParent","padding":12},["meta"]]',

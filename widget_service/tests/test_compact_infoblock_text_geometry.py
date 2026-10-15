@@ -103,6 +103,11 @@ def test_semantic_fixed_slot_conversion_preserves_binding_and_geometry(visual, u
     assert copy_styles is not None
     assert copy_styles.get("height") == "matchParent"
     assert copy_styles.get("padding") == {"top": 8}
+    secondary = components.get("info_secondary")
+    assert secondary is not None
+    secondary_styles = secondary.get("styles")
+    assert secondary_styles is not None
+    assert secondary_styles.get("textOverflow") == "ellipsis"
     if visual == "progressCircle":
         ring = components.get("info_visual_progress")
         assert ring is not None
