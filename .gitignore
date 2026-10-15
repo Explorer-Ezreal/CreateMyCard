@@ -78,6 +78,7 @@ test.jsonl
 /widget_service/cloud/fusion-runner/
 /widget_service/cloud/runner-output/
 /widget_service/tools/
+/docs/plans/
 /widget_service/cloud/data/protocol_profiles/design-compact-dsl-fusion/generated/
 artifact_*.md
 /widget_service/cloud/workspace
