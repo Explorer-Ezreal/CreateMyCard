@@ -114,6 +114,13 @@
       "category": "layout"
     },
     {
+      "module": "semantic/layout/geometry.py",
+      "function": "_collect_unresolved_height_error",
+      "code": "COMPACT_LAYOUT_HEIGHT_UNRESOLVED",
+      "class": "semantic",
+      "category": "layout"
+    },
+    {
       "module": "semantic/layout/horizontal.py",
       "function": "_collect_horizontal_budget_errors",
       "code": "COMPACT_LAYOUT_WIDTH_OVERFLOW",
