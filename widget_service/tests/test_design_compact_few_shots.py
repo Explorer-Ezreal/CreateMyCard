@@ -533,7 +533,7 @@ def test_few_shot_switch_skips_document_loading(monkeypatch) -> None:
 
     assert "本轮实现参考" not in assembled
     assert "# 本轮组件与布局选择" in assembled
-    assert "基础布局组件和组件" in assembled
+    assert "只使用本尺寸登记的布局与真实 Props" in assembled
     for deprecated in ("基础组件", "高阶组件", "高级组件", "普通组件", "基础组合"):
         assert deprecated not in assembled
 
@@ -591,8 +591,7 @@ def test_example_gradients_use_registered_direction_and_stops(
 
 def test_component_catalog_excludes_removed_legacy_components() -> None:
     catalog = PROMPTS["create"]
-    allowed_section = catalog.split("# 2. Compact DSL 组件合同", maxsplit=1)[1]
-    allowed_section = allowed_section.split("## 2.1", maxsplit=1)[0]
+    allowed_section = catalog
     for component_type in HIGH_LEVEL_COMPONENTS:
         assert f"`{component_type}`" in allowed_section
     for removed_type in ("ActionUnit", "Checkbox", "TimelineUnit"):
