@@ -575,6 +575,7 @@ async def test_upload_failure_keeps_trace_terminal_state(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_theme_stage")
 async def test_plan_contract_retry_has_independent_trace_counts(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -684,6 +685,7 @@ async def test_plan_contract_retry_has_independent_trace_counts(
 
 
 @pytest.mark.asyncio
+@pytest.mark.usefixtures("isolated_theme_stage")
 async def test_quality_repair_records_prompt_model_and_revalidation(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
