@@ -198,6 +198,7 @@ class DesignCompactProcessor:
             )
             expanded_source, layout_origins = expand_compact_semantic_layout(
                 source_dsl, size=context.size,
+                skip_compact_dsl_validation=context.skip_compact_dsl_validation,
             )
             if layout_origins:
                 trace_step(
@@ -273,9 +274,20 @@ class DesignCompactProcessor:
             context.task_spec,
             context.allowed_omitted_plan_fact_indexes,
         )
-        plan_issues = self._validation_failure(
-            source_dsl, plan_errors, code="COMPACT_PLAN_COVERAGE_FAILED",
-        ).issues
+        duplicate_fact_context: dict[str, Any] = {}
+        if plan_coverage.duplicate_facts:
+            duplicate_fact_context["duplicateFacts"] = list(
+                plan_coverage.duplicate_facts
+            )
+        plan_issues = tuple(
+            QualityIssue(
+                stage="validation",
+                code="COMPACT_PLAN_COVERAGE_FAILED",
+                message=message,
+                prompt_context=(duplicate_fact_context if index == 0 else {}),
+            )
+            for index, message in enumerate(plan_errors)
+        )
         plan_warning_issues = tuple(
             QualityIssue(
                 stage="validation",
