@@ -509,10 +509,13 @@ def test_fewshot_source_is_one_document_per_size(size: str) -> None:
     if size == "2x2":
         expected.extend(
             f"example-v{index:02d}"
-            for index in (1, 9, 10, 12, 4, 11, 13, 5, 6, 2, 8, 14, 3, 7)
+                for index in (1, 9, 15, 10, 12, 4, 11, 13, 5, 6, 2, 8, 14, 3, 7)
         )
     else:
-        expected.extend(f"example-v{index:02d}" for index in (3, 16, 28, 9, 8, 10, 23, 6, 19, 38))
+        expected.extend(
+            f"example-v{index:02d}"
+            for index in (3, 16, 28, 39, 9, 8, 10, 23, 6, 19, 38)
+        )
     assert list(fragments) == expected
     manifest = json.loads((DEFAULT_SOURCE / "manifest.yaml").read_text(encoding="utf-8"))
     modules = manifest.get("modules")

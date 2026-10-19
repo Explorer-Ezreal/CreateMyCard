@@ -43,6 +43,8 @@ enable_design_compact_few_shots: true
 enable_design_compact_few_shot_selection: false
 # 是否向 Plan 与 DSL 模型提示词追加由布局合同和视觉 Recipe 生成的运行时容量摘要。
 enable_design_compact_runtime_prompt_context: false
+# 2x4 校验失败后先尝试无损确定性紧凑候选，再沿用模型修复。
+enable_design_compact_deterministic_repair: true
 # 首次生成之外的额外重试次数；0 不重试，1 表示最多执行两次生成。必须为非负整数。
 compact_dsl_interface_retry_count: 1
 enable_openai_fallback: true
@@ -79,6 +81,13 @@ deepseek_official_http_temperature: 0.7
 deepseek_official_http_top_p: 0.9
 deepseek_official_http_max_tokens: 8192
 deepseek_official_http_enable_thinking: false
+aliyun_bailian_base_url: https://dashscope.aliyuncs.com/compatible-mode/v1
+aliyun_bailian_api_key: ""
+aliyun_bailian_model: deepseek-v4.1-flash
+aliyun_bailian_temperature: 0.7
+aliyun_bailian_top_p: 0.9
+aliyun_bailian_max_tokens: 8192
+aliyun_bailian_enable_thinking: false
 deepseek_platform_access_key: ""
 deepseek_platform_secret_key_sts_config_key: genui.deepseek.platform.secret.key
 deepseek_platform_ws_url: ""

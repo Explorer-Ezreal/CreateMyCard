@@ -47,6 +47,7 @@ expanded 位置来自模板展开，不是模型 Props。回到原语义 Layout/
 | full_dsl | 失败诊断与事实核对材料 | 从输入与接受 Plan 重建完整 DSL，不沿用失败旧拓扑 |
 
 component_contract_repair 处理组件合同；parent_layout_recompose 重新分配报错父区的完整信息组与动作。无 repairStrategy 的兼容入口才默认局部最小修改。
+semantic_layout_contract_repair 只修复错误消息定位的 Layout、Region 或 Group：严格调整该节点直属 children 的数量、顺序和角色，保留其它区域和合法变体，不修改展开后几何。第一次原样返回时必须再执行精确修复；同一合同连续两次未闭合才升级父布局，父布局仍失败后才重建整份 DSL。
 只有语法、Props、绑定或素材错误时，不因此重选合法布局、删除视觉或改未报错图标/颜色/事件。若同时有容量、结构或缺事实错误，不能冻结已不成立的布局；按本轮升级范围处理所有关联问题。
 
 ## 3. 修复顺序
