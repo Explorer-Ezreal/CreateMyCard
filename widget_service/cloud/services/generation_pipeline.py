@@ -5,6 +5,7 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from typing import Any, Literal, Protocol
 
+from config.config import get_settings
 from custom.model_transport import ModelBackend
 from services.card_validation import (
     CompactDslValidationError,
@@ -25,6 +26,7 @@ from services.compact_plan import (
     compact_plan_omitted_facts,
     evaluate_compact_plan_coverage,
 )
+from services.compact_wide_recomposition import recompose_wide_card
 from services.generation_trace_recorder import TraceSpan, trace_operation, trace_record, trace_step
 from services.protocol_registry import A2UIProtocolRegistry
 from utils.ops_metrics import report_ops_metrics
@@ -170,7 +172,47 @@ class DesignCompactProcessor:
         from services.theme_style_roles import layout_phase
 
         with layout_phase(context.colorless_layout, context.task_spec):
-            return self._process(source_dsl, context)
+            result = self._process(source_dsl, context)
+            enabled = get_settings().enable_design_compact_deterministic_repair
+            eligible = context.size == "2x4" and not context.skip_compact_dsl_validation
+            if not enabled or not eligible or not result.errors:
+                return result
+            started_at = time.perf_counter()
+            profile = A2UIProtocolRegistry.read_design_protocol_profile(
+                context.design_profile_id or "design-compact-dsl"
+            )
+            candidate = recompose_wide_card(
+                result.source_dsl, task_spec=context.task_spec, card_spec=context.card_spec,
+                protocol_profile=profile, layout_scope=context.layout_scope,
+                compact_plan=context.compact_plan,
+                messages=tuple(issue.message for issue in result.errors),
+                allowed_omitted_fact_indexes=context.allowed_omitted_plan_fact_indexes,
+                information_errors_as_warnings=context.plan_information_coverage_as_warning,
+            )
+            if candidate.candidate_count == 0:
+                return result
+            applied = False
+            original = result
+            if candidate.applied:
+                validated = self._process(candidate.source_dsl, context)
+                if not validated.errors:
+                    result = validated
+                    applied = True
+            artifacts = {"deterministic_repair_input": original.source_dsl}
+            artifact_roles = {"deterministic_repair_input": "input"}
+            if applied:
+                artifacts["deterministic_repair_output"] = result.source_dsl
+                artifact_roles["deterministic_repair_output"] = "output"
+            trace_step(
+                "dsl.deterministic_repair.completed", stage="dsl.deterministicRepair",
+                status="success", duration_ms=_elapsed_ms(started_at),
+                details={
+                    "applied": applied, "candidateCount": candidate.candidate_count,
+                    "reasons": list(candidate.reasons),
+                },
+                text_artifacts=artifacts, artifact_roles=artifact_roles,
+            )
+            return result
 
     def _process(
         self, source_dsl: str, context: DslProcessingContext,

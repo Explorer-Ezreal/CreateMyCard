@@ -196,7 +196,8 @@ def validate_compact_dsl(
         warnings=warnings,
     )
     _collect_horizontal_budget_errors(
-        budget_components, task_spec, card_spec, errors, protocol_profile
+        budget_components, task_spec, card_spec, errors, protocol_profile,
+        original_components=context.original_components,
     )
     for component in components:
         location = f"component {component.component_id}.props"

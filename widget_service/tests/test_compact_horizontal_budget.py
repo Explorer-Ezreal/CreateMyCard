@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+import services.compact_component_runtime as component_runtime
 from services.card_validation import CompactDslValidationError, validate_compact_dsl
 from services.card_validation.compact_validation.diagnostics import DiagnosticCollector
 from services.card_validation.compact_validation.semantic.layout.horizontal import (
@@ -392,7 +393,11 @@ def test_static_maximum_caps_declared_width_without_hiding_descendants() -> None
 
 
 @pytest.mark.parametrize(
-    "count, width, overflow", [(2, 276, False), (3, 276, False), (4, 276, True), (4, 280, False)]
+    "count, width, overflow",
+    [
+        (2, 276, False), (3, 276, False), (4, 116, True),
+        (4, 275, True), (4, 276, False), (4, 280, False),
+    ],
 )
 def test_text_block_public_validation_uses_recipe_minimums(
     count: int,
@@ -401,7 +406,7 @@ def test_text_block_public_validation_uses_recipe_minimums(
 ) -> None:
     items = [{"label": "耳机", "value": "80%"} for _ in range(count)]
     rows = [
-        ["root", "Column", {"width": "matchParent"}, ["details"]],
+        ["root", "Column", {"width": "matchParent", "padding": 12}, ["details"]],
         ["details", "TextBlock", {"width": width, "items": items}],
     ]
     source = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
@@ -413,3 +418,41 @@ def test_text_block_public_validation_uses_recipe_minimums(
         )
     else:
         assert validate_compact_dsl(source, task_spec=_TASK, card_spec={}).warnings == ()
+
+
+def test_full_width_text_block_still_rejects_more_than_280(monkeypatch) -> None:
+    contract = component_runtime.load_visual_recipe_contract()
+    components = contract.get("components")
+    assert isinstance(components, dict)
+    recipe = components.get("TextBlock")
+    assert isinstance(recipe, dict)
+    parts = recipe.get("parts")
+    assert isinstance(parts, dict)
+    item = parts.get("item")
+    assert isinstance(item, dict)
+    styles = item.get("styles")
+    assert isinstance(styles, dict)
+    constraints = styles.get("constraintSize")
+    assert isinstance(constraints, dict)
+    constraints["minWidth"] = 65
+    monkeypatch.setattr(component_runtime, "_load_contract", lambda: contract)
+    items = [{"label": "耳机", "value": "80%"} for _ in range(4)]
+    rows = [
+        ["root", "Column", {"width": "matchParent", "padding": 12}, ["details"]],
+        ["details", "TextBlock", {"items": items}],
+    ]
+    source = "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+    with pytest.raises(CompactDslValidationError) as captured:
+        validate_compact_dsl(source, task_spec=_TASK, card_spec={})
+    widths = []
+    for diagnostic in captured.value.diagnostics:
+        if diagnostic.code == "COMPACT_LAYOUT_WIDTH_OVERFLOW":
+            widths.append(diagnostic.expected.get("maximumWidth"))
+    assert widths == [280]
+
+
+def test_ordinary_full_width_row_does_not_receive_text_block_allowance() -> None:
+    rows = _basic_rows(width=276, gap=0)
+    rows[2] = replace(rows[2], props={"width": 140, "flexShrink": 0})
+    rows[3] = replace(rows[3], props={"width": 140, "flexShrink": 0})
+    assert "280vp within 276vp" in _check(rows)[0]

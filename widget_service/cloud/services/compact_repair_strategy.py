@@ -371,9 +371,10 @@ def _is_semantic_layout_contract_failure(
     quality_errors: list[dict[str, Any]],
 ) -> bool:
     """识别已经给出精确父节点合同的语义布局错误。"""
-    return any(
-        "语义布局不符合合同" in str(issue.get("message") or "")
-        for issue in quality_errors
+    messages = [str(issue.get("message") or "") for issue in quality_errors]
+    has_missing_reference = any("引用了不存在的组件" in message for message in messages)
+    return not has_missing_reference and any(
+        "语义布局不符合合同" in message for message in messages
     )
 
 

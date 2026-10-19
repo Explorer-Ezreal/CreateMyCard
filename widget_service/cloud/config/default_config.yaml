@@ -43,6 +43,8 @@ enable_design_compact_few_shots: true
 enable_design_compact_few_shot_selection: false
 # 是否向 Plan 与 DSL 模型提示词追加由布局合同和视觉 Recipe 生成的运行时容量摘要。
 enable_design_compact_runtime_prompt_context: false
+# 2x4 校验失败后先尝试无损确定性紧凑候选，再沿用模型修复。
+enable_design_compact_deterministic_repair: true
 # 首次生成之外的额外重试次数；0 不重试，1 表示最多执行两次生成。必须为非负整数。
 compact_dsl_interface_retry_count: 1
 enable_openai_fallback: true

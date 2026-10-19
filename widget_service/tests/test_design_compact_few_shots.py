@@ -55,6 +55,7 @@ RUNTIME_OWNED_PROPS = {
     },
     "CircleButton": {"actionSurface", "actionInk"},
     "CardButton": {"backgroundColor"},
+    "SummaryList": {"backgroundColor"},
     "TextBlock": {"backgroundColor"},
 }
 BASE_COMPONENTS = {
@@ -72,6 +73,7 @@ EXPECTED_EXAMPLE_ORDER = {
     "2x2": (
         "2x2-V01",
         "2x2-V09",
+        "2x2-V15",
         "2x2-V10",
         "2x2-V12",
         "2x2-V04",
@@ -89,6 +91,7 @@ EXPECTED_EXAMPLE_ORDER = {
         "2x4-V03",
         "2x4-V16",
         "2x4-V28",
+        "2x4-V39",
         "2x4-V09",
         "2x4-V08",
         "2x4-V10",
@@ -101,6 +104,7 @@ EXPECTED_EXAMPLE_ORDER = {
 EXPECTED_LAYOUT_BY_EXAMPLE = {
     "2x2-V01": "S-center",
     "2x2-V09": "S-center",
+    "2x2-V15": "S-center",
     "2x2-V10": "S-title-content",
     "2x2-V12": "S-quad-content",
     "2x2-V04": "S-title-content-action",
@@ -116,6 +120,7 @@ EXPECTED_LAYOUT_BY_EXAMPLE = {
     "2x4-V03": "W-top-bottom",
     "2x4-V16": "W-top-bottom",
     "2x4-V28": "W-top-bottom",
+    "2x4-V39": "W-top-bottom",
     "2x4-V09": "W-split-panels",
     "2x4-V08": "W-content-side-slots",
     "2x4-V10": "W-content-side-slots",
@@ -296,7 +301,6 @@ def test_few_shot_sources_follow_layout_order_and_mark_missing_skeletons() -> No
 
     two_by_four = (PROMPT_SOURCE / "fewshots/2x4.md").read_text(encoding="utf-8")
     for missing in (
-        "同类同级",
         "Sub-118-A",
         "Sub-118-B",
         "Sub-118-C",
@@ -411,6 +415,7 @@ def test_meeting_example_keeps_title_icon_aligned_with_primary_information() -> 
     ("identifier", "required"),
     (
         ("2x2-V01", {"DataDisplay"}),
+        ("2x2-V15", {"DataDisplay"}),
         ("2x2-V02", {"SingleLineTitle", "NumericRatioStack", "CircleButton"}),
         ("2x2-V03", {"TableText", "PillButton"}),
         ("2x2-V04", {"SingleLineTitle", "EventCard", "PillButton"}),
@@ -428,6 +433,7 @@ def test_meeting_example_keeps_title_icon_aligned_with_primary_information() -> 
             {"SingleLineTitle", "EventCard", "TableText", "CircleButton"},
         ),
         ("2x4-V03", {"EmphasizedData", "TextBlock"}),
+        ("2x4-V39", {"SingleLineTitle", "SummaryList"}),
     ),
 )
 def test_examples_use_available_high_level_components(
@@ -474,7 +480,7 @@ def test_text_component_examples_declare_fixed_recipe_font_size(
         "DoubleLineTitle": 12,
         "EmphasizedData": 30,
         "EmphasisText": 18,
-        "DataDisplay": 56,
+        "DataDisplay": 48,
     }
     for row in _rows(source):
         if len(row) < 3:
@@ -482,7 +488,9 @@ def test_text_component_examples_declare_fixed_recipe_font_size(
         component_type = row[1]
         props = row[2]
         expected = fixed_sizes.get(component_type)
-        if component_type == "SecondaryBody":
+        if component_type == "DataDisplay" and "icon" in props:
+            expected = 24
+        elif component_type == "SecondaryBody":
             role = props.get("role")
             items = props.get("items", [])
             expected = 12 if role == "metadata" or len(items) > 2 else 14
@@ -668,6 +676,26 @@ def test_unknown_routes_use_current_neutral_examples() -> None:
     )
     assert PromptBuilder._visual_route(small) == ("generic", ("2x2-V09",))
     assert PromptBuilder._visual_route(wide) == ("generic", ("2x4-V00",))
+
+
+def test_weather_alert_routes_to_text_data_display_example() -> None:
+    task_spec = SimpleNamespace(
+        size="2x2",
+        userQuery="展示当前天气预警和更新日期，不需要按钮",
+        eventCandidates=[],
+        dataModelSchema={
+            "data": {
+                "weather": {
+                    "current": {"alertLevel": {"type": "string"}},
+                    "updatedAtText": {"type": "string"},
+                }
+            }
+        },
+    )
+    assert PromptBuilder._visual_route(task_spec) == (
+        "weather-readout",
+        ("2x2-V15",),
+    )
 
 
 def test_prompt_source_has_no_out_of_range_formal_example_references() -> None:

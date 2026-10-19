@@ -99,7 +99,7 @@ warning；共享 Runtime 继续确定性展开原顺序，版本化物理布局�
 | 检查项 | 当前落点及分类 | 执行范围 |
 |---|---|---|
 | 模型素材候选范围 | `semantic/effective.py`，语义／有效能力，`COMPACT_ASSET_NOT_ALLOWED` | 展开前登记 icon、visual.icon、items[].icon；保留展开后背景检查。兼容引用提取不重新开放 Image 等内部组件 |
-| 可染色 SVG 漏色 | `semantic/layout/assets.py`，语义／布局与视觉约束，`COMPACT_SVG_FILL_COLOR_MISSING` | 仅 ProgressCircle、带 icon 的 CardButton 和 SingleLineTitle；自动着色、原色、PNG 保留原合同 |
+| 可染色 SVG 漏色 | `semantic/layout/assets.py`，语义／布局与视觉约束，`COMPACT_SVG_FILL_COLOR_MISSING` | 仅 ProgressCircle；CardButton 等自动着色组件和 PNG 不触发 |
 | 数值组件选型 | `semantic/numeric_display.py`，语义／展示，`COMPACT_DISPLAY_NUMERIC_COMPONENT_MISUSE` | 仅原始 EmphasizedData 的确定误用；未知字符串类型、表达式、配速及占位值不一概拒绝 |
 
 2026-10-12 合入标题图标：`SingleLineTitle.icon` 纳入原始素材引用登记，继续使用上述两个素材错误码。
@@ -134,6 +134,11 @@ Plan 独立错误码、Occupancy、Alternatives、previousFailures、composition
 
 
 ## 横向固定内容预算补充（2026-10-14，Issue #538）
+
+2026-10-19：满宽四项 TextBlock 的横向校验上限放宽至 280vp，允许实际满宽参考槽位
+至多 4vp 的预算差额。判定仍归 `semantic/layout/horizontal.py`，共享预算计算放在
+`compact_component_runtime.py`，Plan/生成容量说明复用；校验入口仅透传展开前组件。
+不调整渲染 Recipe、窄分区、其它 Row、动作或高度规则，不新增诊断码。
 
 | 检查项 | 分类与实际文件 | 归属理由及边界 |
 |---|---|---|
@@ -205,7 +210,7 @@ Plan 独立错误码、Occupancy、Alternatives、previousFailures、composition
 |---|---|---|
 | 胶囊 ActionUnit 的 `icon` 为数字，如 `123` | 语法／组件 | `syntax/components.py` 的 `_collect_action_unit_errors` 检查非空字符串要求，错误码为 `COMPACT_ACTION_ICON_INVALID` |
 | 素材字段为非空字符串，但不在本轮候选集合内 | 语义／有效能力 | `semantic/effective.py` 的 `_collect_model_asset_source_errors` 检查原始图标是否允许使用，错误码为 `COMPACT_ASSET_NOT_ALLOWED` |
-| 可染色 SVG 缺少显式颜色 | 语义／布局与视觉约束 | `semantic/layout/assets.py` 的 `_collect_asset_color_errors` 检查视觉要求，错误码为 `COMPACT_SVG_FILL_COLOR_MISSING` |
+| ProgressCircle 的可染色 SVG 缺少显式颜色 | 语义／布局与视觉约束 | `semantic/layout/assets.py` 的 `_collect_asset_color_errors` 检查视觉要求，错误码为 `COMPACT_SVG_FILL_COLOR_MISSING`；CardButton 由转换器自动补色 |
 | Progress.value 绑定源不是数值（OBS-L1590） | 数据绑定 | 源字段类型与目标组件的数值输入不相容 |
 | 首帧值与外部声明 schema 类型不一致（OBS-L4824） | 跨文件一致性 | 产物数据与结构化声明不一致 |
 | 直接展示布尔值（OBS-L1564） | 展示语义 | 数据类型本身可以合法，错误在面向用户的表达方式 |

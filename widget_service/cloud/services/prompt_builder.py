@@ -509,7 +509,8 @@ _TWO_BY_FOUR_ROUTE_LOCKS = {
 
 本轮固定使用 W10 非对称双槽。root 必须是 Row，padding 与分区间距均为 12vp；
 一侧是 132×126vp 内容区，另一侧是两个 132×57vp 固定槽，整体允许镜像。禁止公共标题、公共动作区、
-三个等宽栏和第四个数据块。""",
+三个等宽栏和第四个数据块。内容区的 SingleLineTitle 只使用纯文字标题，不得填写 icon 或 fillColor；
+图形信息由固定槽组件承担。""",
     "W-adaptive-single-business": """# 本次尺寸骨架硬约束（高优先级）
 
 本轮只有一个业务数据块，只能在当前第九节保留的 W1-W7 单业务骨架中选择，
@@ -803,6 +804,13 @@ class PromptBuilder:
         if "weather" in normalized_roots or any(
             _contains_any(query, markers) for markers in (("天气", "温度", "空气质量"),)
         ):
+            is_weather_alert_display = (
+                task_spec.size == "2x2"
+                and event_count == 0
+                and _contains_any(query, ("预警", "警报", "警告"))
+            )
+            if is_weather_alert_display:
+                return "weather-readout", ("2x2-V15",)
             if task_spec.size == "2x2" and PromptBuilder._has_explicit_non_weather_action(
                 task_spec
             ):

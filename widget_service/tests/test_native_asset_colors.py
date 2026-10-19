@@ -62,6 +62,22 @@ def _source(kind: str, src: str) -> str:
     return "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
 
 
+def _card_button_source(src: str) -> str:
+    rows = [
+        ["root", "Column", {}, ["action"]],
+        [
+            "action",
+            "CardButton",
+            {
+                "label": "打开",
+                "icon": src,
+                "onClick": [{"call": "clickToDeeplink", "args": {"uri": "test://open"}}],
+            },
+        ],
+    ]
+    return "\n".join(json.dumps(row, ensure_ascii=False) for row in rows)
+
+
 @pytest.mark.parametrize("name", NATIVE_NAMES)
 def test_registered_native_description_matches_runtime(name: str) -> None:
     asset = _asset(name)
@@ -116,6 +132,41 @@ def test_tintable_title_retains_runtime_color(size: str) -> None:
     styles = images[0].get("styles")
     assert isinstance(styles, dict)
     assert styles.get("fillColor") == "@theme:graphicPrimary/1"
+
+
+@pytest.mark.parametrize(
+    "layout_enabled, expected",
+    [(False, "#FF1F4799"), (True, "@theme:primary/1")],
+)
+def test_tintable_card_button_gets_default_icon_color(
+    layout_enabled: bool, expected: str,
+) -> None:
+    asset = _asset("alarm_fill_1")
+    src = asset.get("src")
+    assert isinstance(src, str)
+    task = {"size": "2x4", "assetCandidates": [asset]}
+    with layout_phase(layout_enabled, task):
+        converted = convert_compact_dsl_to_a2ui(_card_button_source(src), size="2x4")
+    images = _images(converted)
+    assert len(images) == 1
+    styles = images[0].get("styles")
+    assert isinstance(styles, dict)
+    assert styles.get("fillColor") == expected
+
+
+@pytest.mark.parametrize("layout_enabled", [False, True])
+def test_card_button_png_keeps_original_color(layout_enabled: bool) -> None:
+    asset = _asset("emoji_sleep")
+    src = asset.get("src")
+    assert isinstance(src, str)
+    task = {"size": "2x4", "assetCandidates": [asset]}
+    with layout_phase(layout_enabled, task):
+        converted = convert_compact_dsl_to_a2ui(_card_button_source(src), size="2x4")
+    images = _images(converted)
+    assert len(images) == 1
+    styles = images[0].get("styles")
+    assert isinstance(styles, dict)
+    assert "fillColor" not in styles
 
 
 @pytest.mark.parametrize("name", ["ic_ranking2", "ic_battery_leaf_color"])
