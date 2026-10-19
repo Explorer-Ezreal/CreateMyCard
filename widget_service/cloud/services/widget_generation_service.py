@@ -55,7 +55,7 @@ from services.compact_plan import (
 )
 from services.compact_repair_strategy import (
     CompactRepairStrategyTracker,
-    compact_repair_issue_category,
+    compact_capacity_recovery_failure_category,
 )
 from services.device_capability_resolver import DeviceCapabilityResolver
 from services.edit_request_normalizer import EditRequestNormalizer
@@ -1746,8 +1746,15 @@ class WidgetGenerationService:
                 quality_error_payloads = [
                     issue.to_prompt_payload() for issue in latest_processing_result.errors
                 ]
-                issue_category = compact_repair_issue_category(quality_error_payloads)
-                if issue_category in {"layout_capacity", "layout_structure"}:
+                issue_category = compact_capacity_recovery_failure_category(
+                    quality_error_payloads,
+                    layout_failure_seen=(
+                        compact_repair_tracker.layout_failure_seen
+                        if compact_repair_tracker is not None
+                        else False
+                    ),
+                )
+                if issue_category is not None:
                     response._compact_dsl_retry_context = CompactDslRetryContext(
                         failure_category=issue_category,
                         capacity_recovery=True,
