@@ -443,6 +443,30 @@ def compact_repair_issue_category(quality_errors: list[dict[str, Any]]) -> str:
     return _issue_category(quality_errors)
 
 
+def compact_capacity_recovery_failure_category(
+    quality_errors: list[dict[str, Any]],
+    *,
+    layout_failure_seen: bool,
+) -> str | None:
+    """判断接口重试是否应按前序布局失败进入容量恢复。"""
+    category = _issue_category(quality_errors)
+    if category in {"layout_capacity", "layout_structure"}:
+        return category
+    if not layout_failure_seen:
+        return None
+    for issue in quality_errors:
+        code = str(issue.get("code") or "")
+        if code == "COMPACT_PLAN_FACT_OMITTED":
+            return "layout_capacity"
+        message = str(issue.get("message") or "").lower()
+        if (
+            category == "plan_coverage"
+            and message.startswith("plan fact is missing from visible dsl:")
+        ):
+            return "layout_capacity"
+    return None
+
+
 def _joint_repair_relevant(category: str, quality_errors: list[dict[str, Any]]) -> bool:
     if category in {"layout_capacity", "layout_structure", "plan_coverage"}:
         return True
@@ -827,6 +851,11 @@ class CompactRepairStrategyTracker:
         if self._active_fallback != "drop_optional_component":
             return ()
         return tuple(sorted(self._allowed_omitted_fact_indexes))
+
+    @property
+    def layout_failure_seen(self) -> bool:
+        """当前完整生成内是否已出现布局容量或结构失败。"""
+        return self._layout_failure_seen
 
     def validation_omitted_fact_indexes(
         self,

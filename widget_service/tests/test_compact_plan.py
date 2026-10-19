@@ -594,6 +594,20 @@ def test_plan_tool_uses_task_paths_actions_and_size_contracts() -> None:
     assert tool["function"]["parameters"]["required"] == ["info_required"]
 
 
+@pytest.mark.parametrize(("size", "max_must_facts"), [("2x2", 8), ("2x4", 12)])
+def test_plan_tool_explains_must_fact_guidance_by_card_size(
+    size: str,
+    max_must_facts: int,
+) -> None:
+    spec = task_spec()
+    spec["size"] = size
+
+    tool = build_compact_plan_tool(spec)
+    priority = tool["function"]["parameters"]["properties"]["info_required"]["items"]
+    priority = priority["properties"]["priority"]
+    assert f"最多可提交 {max_must_facts} 条 must 信息" in priority["description"]
+
+
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
 def test_plan_tool_explains_registered_layout_names_without_new_fields(size: str) -> None:
     spec = task_spec()

@@ -45,6 +45,7 @@ _FACT_KEYS = frozenset(
 )
 _TARGET_KEYS = ("dataId", "actionId", "text")
 _FACT_PRIORITIES = frozenset({"must", "should"})
+_MAX_MUST_FACTS_BY_SIZE = {"2x2": 8, "2x4": 12}
 _FRESHNESS_METADATA_NAMES = frozenset(
     {
         "lastrefreshedat",
@@ -113,6 +114,11 @@ _LAYOUT_HINTS = {
 }
 
 
+def _max_must_facts(size: Any) -> int:
+    """返回当前尺寸 Plan 可接受的 must 事实与动作总数。"""
+    return _MAX_MUST_FACTS_BY_SIZE.get(size, _MAX_MUST_FACTS_BY_SIZE["2x4"])
+
+
 class CompactPlanValidationError(ValueError):
     """模型提交的 Compact Info Plan 不满足合同。"""
 
@@ -148,6 +154,7 @@ def build_compact_plan_tool(
 ) -> dict[str, Any]:
     """根据本次 TaskSpec 构造 submit_card_plan 的动态工具合同。"""
     size = task_spec.get("size")
+    max_must_facts = _max_must_facts(size)
     data_paths = list(compact_plan_data_paths(task_spec))
     action_ids = list(compact_plan_action_ids(task_spec))
     asset_ids = list(compact_plan_asset_ids(task_spec))
@@ -170,6 +177,7 @@ def build_compact_plan_tool(
                 "must 包括用户明确要求展示的每项内容、操作及用途成立必需的上下文；"
                 "should 仅用于未明确要求、且省略后不改变主要用途的入选补充。"
                 "不得为容量将明确要求降为 should。所有入选 actionId 必须为 must。"
+                f"当前 {size} 最多可提交 {max_must_facts} 条 must 信息，Action 计入该数量。"
             ),
         },
         "text": {

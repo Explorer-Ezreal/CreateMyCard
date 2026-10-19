@@ -2,7 +2,10 @@
 
 import pytest
 
-from services.compact_repair_strategy import CompactRepairStrategyTracker
+from services.compact_repair_strategy import (
+    CompactRepairStrategyTracker,
+    compact_capacity_recovery_failure_category,
+)
 
 
 def _issue(message: str, *, code: str = "COMPACT_DSL_VALIDATION_FAILED") -> dict:
@@ -11,6 +14,91 @@ def _issue(message: str, *, code: str = "COMPACT_DSL_VALIDATION_FAILED") -> dict
         "code": code,
         "message": message,
     }
+
+
+def test_capacity_recovery_keeps_layout_cause_after_display_fact_was_removed() -> None:
+    tracker = CompactRepairStrategyTracker()
+    tracker.next_directive(
+        "dsl-v1",
+        [_issue("component body: vertical layout requires at least 142vp within 126vp")],
+    )
+    errors = [
+        _issue(
+            "Plan fact is missing from visible DSL: 当前温度 (/data/weather/temp).",
+            code="COMPACT_PLAN_COVERAGE_FAILED",
+        )
+    ]
+
+    category = compact_capacity_recovery_failure_category(
+        errors,
+        layout_failure_seen=tracker.layout_failure_seen,
+    )
+
+    assert category == "layout_capacity"
+
+
+def test_capacity_recovery_keeps_layout_cause_after_bounded_fallback_omits_fact() -> None:
+    errors = [
+        _issue(
+            "Plan fact was omitted by the bounded fallback: 当前温度。",
+            code="COMPACT_PLAN_FACT_OMITTED",
+        ),
+        _issue(
+            "component support: SecondaryBody is auxiliary and cannot be the only "
+            "information component in the card.",
+        ),
+    ]
+
+    category = compact_capacity_recovery_failure_category(
+        errors,
+        layout_failure_seen=True,
+    )
+
+    assert category == "layout_capacity"
+
+
+@pytest.mark.parametrize(
+    ("errors", "layout_failure_seen"),
+    [
+        (
+            [
+                _issue(
+                    "Plan fact is missing from visible DSL: 当前温度 (/data/weather/temp).",
+                    code="COMPACT_PLAN_COVERAGE_FAILED",
+                )
+            ],
+            False,
+        ),
+        (
+            [
+                _issue(
+                    "Plan action is missing from visible DSL: 打开天气 (open_weather).",
+                    code="COMPACT_PLAN_COVERAGE_FAILED",
+                )
+            ],
+            True,
+        ),
+        (
+            [
+                _issue(
+                    "Plan fact is displayed more than once in visible DSL: 当前温度.",
+                    code="COMPACT_PLAN_COVERAGE_FAILED",
+                )
+            ],
+            True,
+        ),
+    ],
+)
+def test_capacity_recovery_ignores_unrelated_plan_coverage_failures(
+    errors: list[dict],
+    layout_failure_seen: bool,
+) -> None:
+    category = compact_capacity_recovery_failure_category(
+        errors,
+        layout_failure_seen=layout_failure_seen,
+    )
+
+    assert category is None
 
 
 def test_component_contract_migrates_without_stopping_before_global_limit() -> None:
