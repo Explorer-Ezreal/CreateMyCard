@@ -1,5 +1,6 @@
 """图片主题固定构图、完整按钮避让和冻结前景合同。"""
 
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -49,9 +50,9 @@ def test_photo_gates_do_not_cross_size_pools(enabled, size, gate):
     assert gate(task_for(size)).get("eligible") is False
 
 
-def test_only_four_ux_assets_are_active_and_present():
+def test_only_fourteen_ux_assets_are_active_and_present():
     root = Path(__file__).resolve().parents[2]
-    expected = {"photos": 4, "subjectlessWidePhotos": 0, "squareExpansions": 0}
+    expected = {"photos": 14, "subjectlessWidePhotos": 0, "squareExpansions": 0}
     for key, count in expected.items():
         entries = themes.registered_themes(key)
         assert isinstance(entries, list) and len(entries) == count
@@ -64,6 +65,22 @@ def test_only_four_ux_assets_are_active_and_present():
     photos = themes.registered_themes("photos", include_disabled=True)
     expected_paths = {root / entry.get("src") for entry in photos}
     assert set((root / "resources/base/media").glob("bg_*")) == expected_paths
+
+
+@pytest.mark.parametrize("entry", themes.registered_themes("photos"),
+                         ids=lambda entry: entry.get("id"))
+def test_photo_assets_match_delivery_hash_and_preserve_source_record(entry):
+    src = entry.get("src")
+    assert isinstance(src, str)
+    payload = (Path(__file__).resolve().parents[2] / src).read_bytes()
+    assert payload.startswith(b"\xff\xd8\xff")
+    metadata = entry.get("source", {})
+    assert hashlib.sha256(payload).hexdigest() == metadata.get("assetSha256")
+    original_hash = metadata.get("sourceSha256")
+    assert isinstance(original_hash, str)
+    assert len(original_hash) == 64
+    assert metadata.get("originalSize")
+    assert metadata.get("assetSize")
 
 
 def test_capsules_and_round_buttons_both_occupy_the_whole_area():

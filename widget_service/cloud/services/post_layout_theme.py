@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import re
+import secrets
 from typing import Any
 
 from config.config import get_settings
@@ -26,7 +27,11 @@ from services.post_layout_theme_registry import (
     selection_rules,
     user_background_roles,
 )
-from services.theme_content_regions import layout_evidence_reason, photo_layout_evidence
+from services.theme_content_regions import (
+    layout_evidence_reason,
+    photo_layout_evidence,
+    photo_layout_exclusion_reason,
+)
 from services.theme_layout_summary import (
     layout_summary,
     matches_subjectless_layout,
@@ -34,7 +39,7 @@ from services.theme_layout_summary import (
 )
 from services.theme_photo_eligibility import photo_content_reason
 from services.theme_selection_policy import default_palette_family, fusion_candidate_gate
-from services.theme_style_roles import COLOR_FIELDS, is_role, resolve_role
+from services.theme_style_roles import COLOR_FIELDS, ROLE_PATTERN, is_role, resolve_role
 
 PREFIX = "__post_theme_"
 FUSION_FOREGROUND_ID = build_fusion_ball_content_id("root")
@@ -51,7 +56,7 @@ FUSION_IDS = frozenset(
         "fusionBallGlassLayer",
     }
 )
-STYLE_KEYS = COLOR_FIELDS | {"linearGradient"}
+STYLE_KEYS = COLOR_FIELDS | {"linearGradient", "backdropBlur"}
 
 
 def decode(source: str) -> list[dict]:
@@ -114,8 +119,11 @@ def photo_reason(
 ) -> str | None:
     if photo.get("size") != task.get("size"):
         return "尺寸不匹配"
+    layout_reason = photo_layout_exclusion_reason(task, evidence, final_layout)
+    if layout_reason:
+        return layout_reason
     query = task.get("userQuery", "")
-    if re.search(r"纯色|渐变|融球|不要.*(?:图|背景)|不用.*(?:图|背景)|无图", query):
+    if re.search(r"纯色|渐变|[融绒]球|不要.*(?:图|背景)|不用.*(?:图|背景)|无图", query):
         return "用户明确其它主题或不要图片"
     schema = " ".join(schema_field_names(task.get("dataModelSchema", {})))
     if re.search("预警|警报|台风|暴雨|暴雪|雷暴|weatherAlert", query + schema, re.I):
@@ -132,6 +140,7 @@ def photo_reason(
         "information": "资讯|新闻|信息咨询|news",
         "smart-home": "智慧家|智能家居|全屋|灯光|smartHome",
         "calendar": "日程|会议|安排|calendar",
+        "battery": "电量|电池|充电|续航|phoneBattery",
     }
     if not re.search(patterns.get(business, r"(?!)"), query + "\n" + schema, re.I):
         return "业务不适用"
@@ -349,6 +358,24 @@ def apply_photo_fallback(
             layers.extend(fusion_background(fallback, task))
 
 
+def _has_content_surface(node: dict, legacy_panels: list[str]) -> bool:
+    if node.get("component") not in {"Row", "Column", "Stack", "Button"}:
+        return False
+    background = node.get("styles", {}).get("backgroundColor")
+    if is_role(background):
+        match = ROLE_PATTERN.fullmatch(background)
+        if match is None or float(match[2] or 1) == 0:
+            return False
+        if match[1] == "panel":
+            return True
+        return match[1] in {"componentSecondary", "componentTertiary"} and bool(node.get("onClick"))
+    if not isinstance(background, str) or not re.fullmatch(r"#[0-9A-Fa-f]{8}", background):
+        return False
+    if int(background[1:3], 16) == 0:
+        return False
+    return background in legacy_panels or bool(node.get("onClick"))
+
+
 def apply_theme(source: str, theme: dict, task: dict, overrides: dict) -> str:
     records = decode(source)
     nodes = components(records)
@@ -373,11 +400,15 @@ def apply_theme(source: str, theme: dict, task: dict, overrides: dict) -> str:
     if "text" in overrides:
         alpha = content.get("explicitTextAlpha", {}).get("tertiary")
         roles["tertiary"] = f"#{alpha:02X}" + primary[3:]
-    override_config = load_theme_registry().get("userColorOverrides", {})
+    registry_config = load_theme_registry()
+    override_config = registry_config.get("userColorOverrides", {})
     legacy_panels = override_config.get("legacyPanelColors", [])
+    photo_active = theme.get("kind") == "photo" and not requested_background
+    surface_style = registry_config.get("photoSurfaceStyle", {}) if photo_active else {}
     root = next(node for node in nodes if node.get("id") == "root")
     for node in nodes:
         styles = node.setdefault("styles", {})
+        content_surface = bool(surface_style) and _has_content_surface(node, legacy_panels)
         role_keys = set()
         for key in COLOR_FIELDS:
             if is_role(styles.get(key)):
@@ -403,6 +434,8 @@ def apply_theme(source: str, theme: dict, task: dict, overrides: dict) -> str:
                 styles["backgroundColor"] = panel
             else:
                 styles["backgroundColor"] = roles.get("componentSecondary")
+        if content_surface and not styles.get("backgroundColor", "#00").startswith("#00"):
+            styles.update(copy.deepcopy(surface_style))
     root_styles = root.get("styles", {})
     background = overrides.get("background", {}).get("color")
     kind = theme.get("kind")
@@ -446,6 +479,22 @@ def apply_theme(source: str, theme: dict, task: dict, overrides: dict) -> str:
     return result
 
 
+def select_equivalent_photo(selected: str, candidates: list[dict]) -> tuple[str, dict]:
+    audit = {}
+    eligible = {item.get("id") for item in candidates if item.get("kind") == "photo"}
+    for group in load_theme_registry().get("photoSelectionGroups", []):
+        members = group.get("themeIds", [])
+        if selected not in members:
+            continue
+        available = [identity for identity in members if identity in eligible]
+        if len(available) > 1:
+            selected = secrets.choice(available)
+            audit = {"group": group.get("id"), "mode": "uniform",
+                     "eligible": available, "selected": selected}
+        break
+    return selected, audit
+
+
 async def select_theme(
     source: str, task: dict, client: Any, *, allow_expansion: bool = False,
     final_layout: str | None = None,
@@ -484,7 +533,8 @@ async def select_theme(
 
         wide_audit = wide_gate(task)
         for photo in registered_themes("subjectlessWidePhotos"):
-            reason = background_reason(photo, task, evidence, wide_audit)
+            reason = background_reason(photo, task, evidence, wide_audit,
+                                       final_layout=final_layout)
             if overrides:
                 reason = "用户明确颜色优先，不使用固定图片背景"
             if reason:
@@ -502,6 +552,12 @@ async def select_theme(
                 rejected[photo.get("id")] = reason
             else:
                 candidates.append(photo)
+    layout_reason = photo_layout_exclusion_reason(task, evidence, final_layout)
+    if layout_reason:
+        for candidate in candidates:
+            if candidate.get("kind") == "photo":
+                rejected[candidate.get("id")] = layout_reason
+        candidates = [candidate for candidate in candidates if candidate.get("kind") != "photo"]
     if overrides:
         candidates = [item for item in candidates if item.get("kind") in {"gradient", "solid"}]
     photos = [item for item in candidates if item.get("kind") == "photo"]
@@ -569,6 +625,7 @@ async def select_theme(
         selected = choice.get("themeId")
     except (ValueError, RuntimeError) as exc:
         choice_error = str(exc)
+    selected, photo_selection = select_equivalent_photo(selected, candidates)
     theme = allowed.get(selected)
     try:
         if theme.get("composition") == "square-left":
@@ -593,6 +650,7 @@ async def select_theme(
         "defaultPalette": family,
         "userColors": overrides,
         "selectorError": choice_error,
+        "photoSelection": photo_selection,
         "candidates": list(allowed),
         "geometryUnchanged": True,
         "geometryCheckBasis": "foreground-structure",

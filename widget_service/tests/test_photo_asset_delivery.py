@@ -51,10 +51,10 @@ def artifact():
     )
 
 
-def test_all_four_photos_have_distinct_obs_delivery_addresses():
+def test_all_fourteen_photos_have_distinct_obs_addresses():
     photos = [item for item in registry.load_theme_registry().get("themes", [])
               if item.get("kind") == "photo"]
-    assert len(photos) == 4
+    assert len(photos) == 14
     configured = {}
     for item in photos:
         background = item.get("background", {})
@@ -71,8 +71,13 @@ def test_all_four_photos_have_distinct_obs_delivery_addresses():
     assert set(configured) == {
         "photo-ux-star-trails-wide", "photo-ux-sleep-square",
         "photo-ux-sport-center-wide", "photo-ux-water-lily-square",
+        "photo-ux-autumn-square", "photo-ux-yellow-arch-square",
+        "photo-ux-metronome-square", "photo-ux-galaxy-sleep-square",
+        "photo-ux-desk-lamp-calendar-square", "photo-ux-flowers-weather-square",
+        "photo-ux-violin-music-square", "photo-ux-bulb-battery-square",
+        "photo-ux-green-bulb-battery-square", "photo-ux-green-bulb-battery-wide",
     }
-    assert len(set(configured.values())) == 4
+    assert len(set(configured.values())) == 14
 
 
 @pytest.mark.parametrize(("photo_id", "size"), [
@@ -80,8 +85,18 @@ def test_all_four_photos_have_distinct_obs_delivery_addresses():
     ("photo-ux-sport-center-wide", "2x4"),
     ("photo-ux-sleep-square", "2x2"),
     ("photo-ux-water-lily-square", "2x2"),
+    ("photo-ux-autumn-square", "2x2"),
+    ("photo-ux-yellow-arch-square", "2x2"),
+    ("photo-ux-metronome-square", "2x2"),
+    ("photo-ux-galaxy-sleep-square", "2x2"),
+    ("photo-ux-desk-lamp-calendar-square", "2x2"),
+    ("photo-ux-flowers-weather-square", "2x2"),
+    ("photo-ux-violin-music-square", "2x2"),
+    ("photo-ux-bulb-battery-square", "2x2"),
+    ("photo-ux-green-bulb-battery-square", "2x2"),
+    ("photo-ux-green-bulb-battery-wide", "2x4"),
 ])
-def test_configured_obs_urls_pass_existing_final_asset_validation(monkeypatch, photo_id, size):
+def test_registered_photo_sources_pass_existing_final_asset_validation(monkeypatch, photo_id, size):
     photo = next(item for item in registry.registered_themes("photos")
                  if item.get("id") == photo_id)
     original = artifact()
@@ -95,10 +110,15 @@ def test_configured_obs_urls_pass_existing_final_asset_validation(monkeypatch, p
         A2UIProtocolRegistry(original.meta.protocolProfileId).get_profile(),
     ))
     assert not audit.get("finalValidationErrors"), audit
-    assert photo.get("remoteUrl")
-    assert node_by_id(delivered.genui, themes.PREFIX + "image").get("src") == photo.get("remoteUrl")
-    assert node_by_id(delivered.genui, themes.PREFIX + "base").get("src") == photo.get("remoteUrl")
+    expected = photo.get("remoteUrl")
+    assert isinstance(expected, str)
+    assert expected.startswith("https://")
+    assert node_by_id(delivered.genui, themes.PREFIX + "image").get("src") == expected
+    assert node_by_id(delivered.genui, themes.PREFIX + "base").get("src") == expected
     assert node_by_id(delivered.genui, "root").get("styles", {}).get("backgroundColor")
+    assert delivered.taskSpec.get("assetCandidates") == [
+        {"id": photo_id, "src": expected, "description": "主题背景"},
+    ]
 
 
 @pytest.mark.parametrize("address", ["", ADDRESS])
@@ -178,7 +198,7 @@ def test_theme_prompt_never_receives_remote_url(monkeypatch, enabled):
     result, audit = asyncio.run(themes.select_theme(
         layout, task(), client, final_layout=sample.layout,
     ))
-    assert (audit.get("themeId") == PHOTO_ID) is enabled
+    assert (audit.get("themeId") in {PHOTO_ID, "photo-ux-flowers-weather-square"}) is enabled
     assert ADDRESS not in json.dumps(theme_description(photo))
     assert ADDRESS not in json.dumps(client.generate.call_args.args)
     assert ADDRESS not in result
