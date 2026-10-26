@@ -1346,7 +1346,6 @@ def test_two_by_four_plan_without_action_keeps_top_bottom_layout_hint() -> None:
     [
         ("dataId", "/data/calendar/events/0/missing", "not present in TaskSpec"),
         ("actionId", "event.missing", "not present in TaskSpec"),
-        ("text", "模型自行增加的文案", "must be copied from userQuery"),
     ],
 )
 def test_plan_rejects_invented_targets(field: str, value: str, message: str) -> None:
@@ -1363,6 +1362,30 @@ def test_plan_rejects_invented_targets(field: str, value: str, message: str) -> 
     )
     with pytest.raises(CompactPlanValidationError, match=message):
         parse_compact_plan_call(raw, task_spec())
+
+
+def test_plan_warns_when_text_is_not_copied_from_user_query() -> None:
+    raw = json.dumps(
+        {
+            "name": "submit_card_plan",
+            "arguments": {
+                "info_required": [
+                    {
+                        "requirement": "带日期上下文的行程",
+                        "text": "Day1 11:30-13:00 知竹素菜馆午餐",
+                    },
+                ]
+            },
+        },
+        ensure_ascii=False,
+    )
+
+    result = parse_compact_plan_call(raw, task_spec())
+
+    assert result.plan["info_required"][0]["text"] == "Day1 11:30-13:00 知竹素菜馆午餐"
+    assert result.warnings == (
+        "info_required[0].text must be copied from userQuery.",
+    )
 
 
 def test_compact_dsl_must_cover_plan_data_and_action() -> None:

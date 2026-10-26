@@ -1,5 +1,10 @@
 # Compact DSL 现有校验规则分类清单 v1
 
+2026-10-26：动态 `info_required[].text` 是否为 `userQuery` 连续原文片段，归信息计划合同，判定位于
+`compact_plan.py`，不迁入 Compact DSL 校验目录。该来源不匹配由阻断错误调整为 warning，保留模型提交的
+事实，不单独触发 Plan 修复；初始 Plan 提示仍要求优先逐字引用。`dataId`、`actionId` 来源、Action 合同及
+后续 Plan 覆盖、绑定、协议和布局容量检查不受影响。
+
 2026-10-25 静态展示质量增量：`displayRole`、`presentationStyle`、`paletteFamily` 的静态专属形状与
 枚举检查归 `compact_plan.py` 的信息计划合同；动态 Plan 不接受这些字段。可省略属性标签的字段形状
 由 `static_content_components.py` 共享展开检查，归语法／组件；value 仍必填，显式 label 不得为空。

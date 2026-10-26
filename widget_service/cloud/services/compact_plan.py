@@ -2544,8 +2544,7 @@ def _validate_facts(
             continue
         source_mismatch = _normalize_text(target_value) not in _normalize_text(query_text)
         if target == "text" and source_mismatch and not static_content:
-            errors.append(f"{location}.text must be copied from userQuery.")
-            continue
+            warnings.append(f"{location}.text must be copied from userQuery.")
         priority = raw_fact.get("priority", "must")
         if priority not in _FACT_PRIORITIES:
             errors.append(f"{location}.priority must be must or should.")

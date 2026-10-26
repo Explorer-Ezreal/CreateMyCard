@@ -202,11 +202,13 @@ def test_plan_prompt_contains_only_incremental_contract(size: str) -> None:
     assert "## 2x4 组件选型" not in plan_prompt
 
 
-def test_plan_prompt_allows_bounded_three_item_list_selection_without_runtime_cap() -> None:
+def test_plan_prompt_requires_bounded_three_item_list_selection_without_runtime_cap() -> None:
     plan_prompt = read_prompt(DEFAULT_SOURCE, "plan", size="2x4")
 
     assert "2x4 有序列表的 Plan 容量例外" in plan_prompt
-    assert "只选入最多 3 个完整成员进入 `info_required`" in plan_prompt
+    assert "必须在 Plan 阶段只选入最多 3 个完整成员进入 `info_required`" in plan_prompt
+    assert "不得将第 4 个及" in plan_prompt
+    assert "后续成员写入 Plan" in plan_prompt
     assert "没有额外优先级时，按输入原始顺序保留前 3 个" in plan_prompt
     assert "Action 及其完整参数不适用此例外" in plan_prompt
     assert "不是 Runtime 对 `EventCard.items` 新增最多 3 项的硬上限" in plan_prompt
