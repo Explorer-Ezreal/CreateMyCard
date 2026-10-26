@@ -614,6 +614,9 @@ class WidgetGenerationService:
                 "effectiveData": bool(effective_bindings),
             },
         )
+        from services.prompt_builder import PromptBuilder
+
+        business_context = PromptBuilder.business_context(task_spec)
         latency_by_stage["generationPreflight"] = self._elapsed_ms(stage_started_at)
         trace_step(
             "generation_preflight.completed",
@@ -921,6 +924,7 @@ class WidgetGenerationService:
                 plan_system_prompt,
                 prompt[1]["content"],
                 retry_context=compact_retry_context,
+                business_context=business_context,
             )
             trace_step(
                 "plan.prompt.built",
@@ -2025,6 +2029,7 @@ class WidgetGenerationService:
                     protocol_profile,
                     allow_expansion=defer_size_notification,
                     final_layout=design_token,
+                    business_context=business_context,
                 )
                 if content_policy.is_static:
                     from services.static_content_context import final_static_display_errors
