@@ -617,6 +617,9 @@ class WidgetGenerationService:
                 "effectiveData": bool(effective_bindings),
             },
         )
+        from services.prompt_builder import PromptBuilder
+
+        business_context = PromptBuilder.business_context(task_spec)
         latency_by_stage["generationPreflight"] = self._elapsed_ms(stage_started_at)
         trace_step(
             "generation_preflight.completed",
@@ -924,6 +927,7 @@ class WidgetGenerationService:
                 plan_system_prompt,
                 prompt[1]["content"],
                 retry_context=compact_retry_context,
+                business_context=business_context,
             )
             trace_step(
                 "plan.prompt.built",
@@ -1720,6 +1724,8 @@ class WidgetGenerationService:
                     source_load_result.artifact_digest if source_load_result else None
                 ),
             )
+            if source_generated_by_template and template_source_generator is not None:
+                artifact = template_source_generator.register_artifact_assets(artifact)
             with trace_attempt(**validation_attempts):
                 trace_step(
                     "artifact.candidate.built",
@@ -2092,6 +2098,8 @@ class WidgetGenerationService:
                     source_load_result.artifact_digest if source_load_result else None
                 ),
             )
+            if source_generated_by_template and template_source_generator is not None:
+                artifact = template_source_generator.register_artifact_assets(artifact)
             if colorless_source() or single_step_theme:
                 from services.post_layout_theme import theme_artifact
 
@@ -2107,6 +2115,7 @@ class WidgetGenerationService:
                     protocol_profile,
                     allow_expansion=defer_size_notification,
                     final_layout=design_token,
+                    business_context=business_context,
                 )
                 if content_policy.is_static:
                     from services.static_content_context import final_static_display_errors
