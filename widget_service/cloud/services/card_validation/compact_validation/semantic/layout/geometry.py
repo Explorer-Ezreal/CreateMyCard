@@ -86,7 +86,7 @@ def _collect_height_budget_errors(
         required_height = _column_children_minimum_height(
             component, components_by_id, measure_content_overflow=size == "2x2"
         )
-        height_tolerance = 2.0 if size == "2x2" else 0.0
+        height_tolerance = 2.0 if size in {"2x2", "2x4"} else 0.0
         if required_height <= available_height + height_tolerance + 1e-07:
             continue
         overflow = required_height - available_height

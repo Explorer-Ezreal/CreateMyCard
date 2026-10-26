@@ -4,6 +4,7 @@
 
 from __future__ import annotations
 
+import copy
 import json
 import math
 import re
@@ -11,6 +12,7 @@ from dataclasses import dataclass, replace
 from typing import Any
 
 from core.json_pointer import parse_json_pointer
+from models.generation import CompactDslRecoveryFact
 from services.compact_component_semantics import (
     CORE_INFORMATION_COMPONENT_TYPES,
     MODEL_COMPONENT_TYPES_BY_SIZE,
@@ -158,19 +160,27 @@ def build_compact_plan_tool(
     *,
     include_composition: bool = False,
     layout_scope: str | None = None,
+    allowed_fact_targets: tuple[tuple[str, str], ...] | None = None,
 ) -> dict[str, Any]:
     """根据本次 TaskSpec 构造 submit_card_plan 的动态工具合同。"""
     size = task_spec.get("size")
     max_must_facts = _max_must_facts(size)
     data_paths = list(compact_plan_data_paths(task_spec))
     action_ids = list(compact_plan_action_ids(task_spec))
+    allowed_texts: list[str] | None = None
+    if allowed_fact_targets is not None:
+        allowed = set(allowed_fact_targets)
+        data_paths = [path for path in data_paths if ("dataId", path) in allowed]
+        action_ids = [action_id for action_id in action_ids if ("actionId", action_id) in allowed]
+        allowed_texts = [value for target, value in allowed_fact_targets if target == "text"]
     asset_ids = list(compact_plan_asset_ids(task_spec))
     target_variants: list[dict[str, Any]] = []
     if data_paths:
         target_variants.append({"required": ["dataId"]})
     if action_ids:
         target_variants.append({"required": ["actionId"]})
-    target_variants.append({"required": ["text"]})
+    if allowed_texts is None or allowed_texts:
+        target_variants.append({"required": ["text"]})
     properties: dict[str, Any] = {
         "requirement": {
             "type": "string",
@@ -185,14 +195,6 @@ def build_compact_plan_tool(
                 "should 仅用于未明确要求、且省略后不改变主要用途的入选补充。"
                 "不得为容量将明确要求降为 should。所有入选 actionId 必须为 must。"
                 f"当前 {size} 最多可提交 {max_must_facts} 条 must 信息，Action 计入该数量。"
-            ),
-        },
-        "text": {
-            "type": "string",
-            "minLength": 1,
-            "description": (
-                "逐字引用 userQuery 明确要求在卡面展示的静态正文；"
-                "仅用于拨号、入会、导航等操作的参数不单独列为展示事实。"
             ),
         },
         "componentHints": {
@@ -219,6 +221,17 @@ def build_compact_plan_tool(
             ),
         },
     }
+    if allowed_texts is None or allowed_texts:
+        properties["text"] = {
+            "type": "string",
+            "minLength": 1,
+            "description": (
+                "逐字引用 userQuery 明确要求在卡面展示的静态正文；"
+                "仅用于拨号、入会、导航等操作的参数不单独列为展示事实。"
+            ),
+        }
+        if allowed_texts is not None:
+            properties["text"]["enum"] = allowed_texts
     if data_paths:
         properties["dataId"] = {
             "type": "string",
@@ -2050,6 +2063,136 @@ def compact_plan_coverage_warnings(
         task_spec,
         allowed_omitted_fact_indexes=allowed_omitted_fact_indexes,
     ).warnings
+
+
+def _recovery_fact(fact: dict[str, Any]) -> CompactDslRecoveryFact | None:
+    for target in _TARGET_KEYS:
+        value = fact.get(target)
+        if not isinstance(value, str) or not value.strip():
+            continue
+        requirement = fact.get("requirement")
+        priority = fact.get("priority")
+        if not isinstance(requirement, str) or priority not in _FACT_PRIORITIES:
+            return None
+        return CompactDslRecoveryFact(
+            target=target,
+            value=value.strip(),
+            requirement=requirement.strip(),
+            priority=priority,
+        )
+    return None
+
+
+def compact_plan_recovery_facts(
+    compact_dsl: str,
+    plan: dict[str, Any] | None,
+    task_spec: dict[str, Any],
+) -> tuple[tuple[CompactDslRecoveryFact, ...], tuple[CompactDslRecoveryFact, ...]]:
+    """按第一轮最后一次失败 DSL 的可见结果划分第二轮 Plan 事实。"""
+    if not plan:
+        return (), ()
+    facts = plan.get("info_required")
+    if not isinstance(facts, list):
+        return (), ()
+    non_action_indexes = tuple(
+        index
+        for index, fact in enumerate(facts)
+        if isinstance(fact, dict) and "actionId" not in fact
+    )
+    omitted = compact_plan_omitted_facts(
+        compact_dsl,
+        plan,
+        task_spec,
+        non_action_indexes,
+    )
+    omitted_targets = set()
+    for fact in omitted:
+        recovery_fact = _recovery_fact(fact)
+        if recovery_fact is not None:
+            omitted_targets.add((recovery_fact.target, recovery_fact.value))
+    retained_facts: list[CompactDslRecoveryFact] = []
+    omitted_facts: list[CompactDslRecoveryFact] = []
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        recovery_fact = _recovery_fact(fact)
+        if recovery_fact is None:
+            continue
+        target = (recovery_fact.target, recovery_fact.value)
+        should_omit = target in omitted_targets
+        if recovery_fact.target != "actionId" and should_omit:
+            omitted_facts.append(recovery_fact)
+        else:
+            retained_facts.append(recovery_fact)
+    return tuple(retained_facts), tuple(omitted_facts)
+
+
+def build_compact_recovery_plan(
+    plan: dict[str, Any] | None,
+    required_facts: tuple[CompactDslRecoveryFact, ...],
+) -> dict[str, Any] | None:
+    """从首轮已接受 Plan 构造确定性的接口恢复 Plan。"""
+    if not plan or not required_facts:
+        return None
+    facts = plan.get("info_required")
+    if not isinstance(facts, list):
+        return None
+    expected = {(fact.target, fact.value) for fact in required_facts}
+    retained: list[dict[str, Any]] = []
+    for fact in facts:
+        if not isinstance(fact, dict):
+            continue
+        recovery_fact = _recovery_fact(fact)
+        if recovery_fact is None:
+            continue
+        if (recovery_fact.target, recovery_fact.value) in expected:
+            retained.append(copy.deepcopy(fact))
+    recovery_plan = copy.deepcopy(plan)
+    recovery_plan["info_required"] = retained
+    recovery_plan.pop("composition", None)
+    recovery_plan.pop("compositionNotes", None)
+    if compact_recovery_plan_errors(recovery_plan, required_facts):
+        return None
+    return recovery_plan
+
+
+def compact_recovery_plan_errors(
+    plan: dict[str, Any],
+    required_facts: tuple[CompactDslRecoveryFact, ...],
+) -> tuple[str, ...]:
+    """确保容量恢复 Plan 只规划第一轮最终保留的事实。"""
+    if not required_facts:
+        return ()
+    expected = {(fact.target, fact.value): fact for fact in required_facts}
+    actual: dict[tuple[str, str], dict[str, Any]] = {}
+    for fact in plan.get("info_required", []):
+        if not isinstance(fact, dict):
+            continue
+        recovery_fact = _recovery_fact(fact)
+        if recovery_fact is not None:
+            actual[(recovery_fact.target, recovery_fact.value)] = fact
+    errors: list[str] = []
+    for target, expected_fact in expected.items():
+        actual_fact = actual.get(target)
+        if actual_fact is None:
+            errors.append(
+                "容量恢复 Plan 缺少第一轮最终保留的信息："
+                f"{expected_fact.requirement} ({expected_fact.value})。"
+            )
+            continue
+        if actual_fact.get("priority") != expected_fact.priority:
+            errors.append(
+                "容量恢复 Plan 不得修改保留信息的优先级："
+                f"{expected_fact.requirement} 必须保持 {expected_fact.priority}。"
+            )
+    for target, actual_fact in actual.items():
+        if target in expected:
+            continue
+        errors.append(
+            "容量恢复 Plan 不得重新加入第一轮最终已缺失的信息："
+            f"{actual_fact.get('requirement') or target[1]} ({target[1]})。"
+        )
+    return tuple(errors)
 
 
 def compact_plan_omitted_facts(
