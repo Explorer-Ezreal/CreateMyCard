@@ -155,6 +155,8 @@ enable_drop_plan_fact_validation 默认关闭；开启时在 Repair 阶段恢复
 2026-10-15：SecondaryBody.items数量上限由4改为6，归属语法／组件合同，仍委托
 compact_high_level_components.py的共享组件校验，不在分类入口重复实现。实际数量超过6时进入
 既有组件修复，由compact_repair_strategy.py说明可选补充项清理与Plan保护；容量归属与Drop授权不变。
+`COMPACT_LAYOUT_HEIGHT_OVERFLOW` 可附带 `SecondaryBody` 可保留行与 `doesNotFit` 条目证据；
+该证据仍归属语义／布局几何，Drop 选择与核心组件保护仍归属修复编排，不在校验入口重复判定。
 
 2026-10-14 单例检视补充：2×4 SecondaryBody 单行的完整值与静态标签共同核算宽度。
 归属语义／布局与视觉约束，落点 semantic/layout/text_width.py，复用现有同行压力函数及建议；
@@ -1286,6 +1288,7 @@ BASE-02 至 BASE-04 同样不在本次文档更新中修正规则。新反馈涉
 | 检查项 | 分类与实际落点 | 归属理由 |
 | --- | --- | --- |
 | 动态进度必须为已声明数值类型 | 语义／数据绑定，`semantic/bindings.py`；复用 `compact_component_bindings.py` 的组件绑定合同 | 检查绑定源类型；去除 `/__display` 私有路径豁免，沿用 `COMPACT_BINDING_PROGRESS_TYPE` |
+| InfoBlock 进度主值的数值来源 | 语义／数据绑定，`semantic/bindings.py` | 复用既有类型检查，以 `COMPACT_BINDING_INFO_BLOCK_PROGRESS_SOURCE` 携带展示路径、登记的 `numericSource` 和精确修复建议；不新增拒绝条件 |
 | 进度驱动与展示文字的登记关系 | 语义／数据绑定，`semantic/bindings.py` | 检查同对象同指标关系，不扩展布局或 Plan 编排职责 |
 | 完整产物进度引用首帧副本或非数值来源 | 公共绑定校验，`card_validation/progress_sources.py`，由公共 `BindingValidator` 调用 | 基于原始依赖和声明判断动态来源；代码 `BINDING_PROGRESS_SOURCE_INVALID`；转换后及保存前复用同一判定 |
 

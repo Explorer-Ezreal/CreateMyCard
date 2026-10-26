@@ -7,7 +7,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any
 
 from core.json_pointer import parse_json_pointer
@@ -147,6 +147,10 @@ class CompactOptionalDropCandidate:
     contains_must_facts: bool
     partial: bool = False
     display_texts: tuple[str, ...] = ()
+    item_indexes: tuple[int, ...] = ()
+    item_signatures: tuple[str, ...] = ()
+    requires_core_reattach: bool = False
+    protected_core_component_ids: tuple[str, ...] = ()
 
 
 def build_compact_plan_tool(
@@ -2096,6 +2100,135 @@ def compact_plan_omitted_facts(
     return tuple(omitted)
 
 
+def _reachable_component_ids(rows: tuple[Any, ...]) -> set[str]:
+    components = {
+        row.component_id: row for row in rows if isinstance(row, ComponentRow)
+    }
+    pending = ["root"]
+    reachable: set[str] = set()
+    while pending:
+        component_id = pending.pop()
+        if component_id in reachable:
+            continue
+        component = components.get(component_id)
+        if component is None:
+            continue
+        reachable.add(component_id)
+        pending.extend(component.children)
+    return reachable
+
+
+def _reachable_core_component_ids(rows: tuple[Any, ...]) -> set[str]:
+    components = {
+        row.component_id: row for row in rows if isinstance(row, ComponentRow)
+    }
+    return {
+        component_id
+        for component_id in _reachable_component_ids(rows)
+        if components[component_id].component_type in CORE_INFORMATION_COMPONENT_TYPES
+    }
+
+
+def _defined_core_component_ids(rows: tuple[Any, ...]) -> set[str]:
+    return {
+        row.component_id
+        for row in rows
+        if isinstance(row, ComponentRow)
+        and row.component_type in CORE_INFORMATION_COMPONENT_TYPES
+    }
+
+
+def _drop_fact_matches(
+    row: ComponentRow,
+    facts: list[Any],
+    event_handlers: dict[str, dict[str, Any]],
+) -> tuple[list[int], list[str], bool]:
+    state = _compact_visible_state([row])
+    matched: list[int] = []
+    priorities: list[str] = []
+    for index, fact in enumerate(facts):
+        if not isinstance(fact, dict):
+            continue
+        result = _compact_fact_coverage_result(fact, state, event_handlers)
+        if result.errors or result.warnings:
+            continue
+        if "actionId" in fact:
+            return [], [], True
+        matched.append(index)
+        priorities.append(str(fact.get("priority") or "must"))
+    return matched, priorities, False
+
+
+def _secondary_body_partial_drop_candidate(
+    row: ComponentRow,
+    facts: list[Any],
+    event_handlers: dict[str, dict[str, Any]],
+    allowed_fact_indexes: set[int] | None,
+    max_fact_count: int | None,
+    preserved_fact_indexes: set[int],
+) -> CompactOptionalDropCandidate | None:
+    if row.component_type != "SecondaryBody" or allowed_fact_indexes is None:
+        return None
+    items = row.props.get("items")
+    if not isinstance(items, list):
+        return None
+    candidates: list[CompactOptionalDropCandidate] = []
+    for item_index, item in enumerate(items):
+        item_row = ComponentRow(
+            row.component_id,
+            row.component_type,
+            {**row.props, "items": [item]},
+            row.children,
+        )
+        item_matches, item_priorities, has_action_fact = _drop_fact_matches(
+            item_row,
+            facts,
+            event_handlers,
+        )
+        if has_action_fact or not item_matches:
+            continue
+        omission_pairs = [
+            (index, priority)
+            for index, priority in zip(item_matches, item_priorities, strict=True)
+            if index not in preserved_fact_indexes
+        ]
+        if not omission_pairs:
+            continue
+        omission_indexes = [index for index, _priority in omission_pairs]
+        if any(index not in allowed_fact_indexes for index in omission_indexes):
+            continue
+        if max_fact_count is not None and len(omission_indexes) > max_fact_count:
+            continue
+        requirements = tuple(
+            str(facts[index].get("requirement") or "") for index in omission_indexes
+        )
+        signature = json.dumps(
+            item,
+            ensure_ascii=False,
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        candidates.append(
+            CompactOptionalDropCandidate(
+                component_id=row.component_id,
+                component_type=row.component_type,
+                fact_indexes=tuple(omission_indexes),
+                requirements=requirements,
+                contains_must_facts=any(
+                    priority != "should" for _index, priority in omission_pairs
+                ),
+                partial=True,
+                item_indexes=(item_index,),
+                item_signatures=(signature,),
+            )
+        )
+    should_candidates = [item for item in candidates if not item.contains_must_facts]
+    selected = should_candidates or candidates
+    if not selected:
+        return None
+    return max(selected, key=lambda item: max(item.fact_indexes, default=-1))
+
+
 def compact_plan_optional_drop_candidate(
     compact_dsl: str,
     plan: dict[str, Any] | None,
@@ -2118,14 +2251,45 @@ def compact_plan_optional_drop_candidate(
             return None
         return _static_optional_drop_candidate(compact_dsl, plan, allowed_fact_indexes)
     try:
-        rows = parse_compact_dsl_rows(compact_dsl)
+        rows = parse_compact_dsl_rows(
+            compact_dsl,
+            expand_layouts=False,
+            preserve_unreachable=True,
+        )
     except (TypeError, ValueError):
         return None
+    reachable_component_ids = _reachable_component_ids(rows)
+    reachable_core_component_ids = _reachable_core_component_ids(rows)
+    defined_core_component_ids = _defined_core_component_ids(rows)
+    if not defined_core_component_ids:
+        return None
+    requires_core_reattach = not reachable_core_component_ids
+    protected_core_component_ids = (
+        defined_core_component_ids
+        if requires_core_reattach
+        else reachable_core_component_ids
+    )
     event_handlers = _event_handlers_by_id(task_spec)
+    preserved_fact_indexes: set[int] = set()
+    if requires_core_reattach:
+        for row in rows:
+            if not isinstance(row, ComponentRow):
+                continue
+            if row.component_id not in protected_core_component_ids:
+                continue
+            matched, _priorities, has_action_fact = _drop_fact_matches(
+                row,
+                facts,
+                event_handlers,
+            )
+            if not has_action_fact:
+                preserved_fact_indexes.update(matched)
     should_only_candidates: list[CompactOptionalDropCandidate] = []
     fallback_candidates: list[CompactOptionalDropCandidate] = []
     for row in rows:
         if not isinstance(row, ComponentRow):
+            continue
+        if row.component_id not in reachable_component_ids:
             continue
         if row.component_type in {"Row", "Column", "Stack"}:
             continue
@@ -2133,38 +2297,68 @@ def compact_plan_optional_drop_candidate(
             continue
         if row.props.get("onClick"):
             continue
-        state = _compact_visible_state([row])
-        matched: list[int] = []
-        priorities: list[str] = []
-        has_action_fact = False
-        for index, fact in enumerate(facts):
-            if not isinstance(fact, dict):
-                continue
-            result = _compact_fact_coverage_result(fact, state, event_handlers)
-            if result.errors or result.warnings:
-                continue
-            if "actionId" in fact:
-                has_action_fact = True
-                break
-            matched.append(index)
-            priorities.append(str(fact.get("priority") or "must"))
+        partial_candidate = _secondary_body_partial_drop_candidate(
+            row,
+            facts,
+            event_handlers,
+            allowed_fact_indexes,
+            max_fact_count,
+            preserved_fact_indexes,
+        )
+        if partial_candidate is not None:
+            partial_candidate = replace(
+                partial_candidate,
+                requires_core_reattach=requires_core_reattach,
+                protected_core_component_ids=tuple(sorted(protected_core_component_ids)),
+            )
+            target = fallback_candidates
+            if not partial_candidate.contains_must_facts:
+                target = should_only_candidates
+            target.append(partial_candidate)
+            continue
+        if row.component_type == "SecondaryBody" and allowed_fact_indexes is not None:
+            continue
+        if (
+            row.component_id in protected_core_component_ids
+            and len(protected_core_component_ids) <= 1
+        ):
+            continue
+        matched, priorities, has_action_fact = _drop_fact_matches(
+            row,
+            facts,
+            event_handlers,
+        )
         if has_action_fact or not matched:
             continue
-        if max_fact_count is not None and len(matched) > max_fact_count:
+        omission_pairs = [
+            (index, priority)
+            for index, priority in zip(matched, priorities, strict=True)
+            if index not in preserved_fact_indexes
+        ]
+        if not omission_pairs:
+            continue
+        omission_indexes = [index for index, _priority in omission_pairs]
+        if max_fact_count is not None and len(omission_indexes) > max_fact_count:
             continue
         if allowed_fact_indexes is not None:
             carries_unrelated_fact = any(
-                fact_index not in allowed_fact_indexes for fact_index in matched
+                fact_index not in allowed_fact_indexes for fact_index in omission_indexes
             )
             if carries_unrelated_fact:
                 continue
-        requirements = tuple(str(facts[index].get("requirement") or "") for index in matched)
+        requirements = tuple(
+            str(facts[index].get("requirement") or "") for index in omission_indexes
+        )
         candidate = CompactOptionalDropCandidate(
             component_id=row.component_id,
             component_type=row.component_type,
-            fact_indexes=tuple(matched),
+            fact_indexes=tuple(omission_indexes),
             requirements=requirements,
-            contains_must_facts=any(priority != "should" for priority in priorities),
+            contains_must_facts=any(
+                priority != "should" for _index, priority in omission_pairs
+            ),
+            requires_core_reattach=requires_core_reattach,
+            protected_core_component_ids=tuple(sorted(protected_core_component_ids)),
         )
         if candidate.contains_must_facts:
             fallback_candidates.append(candidate)
@@ -2175,7 +2369,14 @@ def compact_plan_optional_drop_candidate(
         candidates = fallback_candidates
     if not candidates:
         return None
-    return min(candidates, key=lambda item: len(item.fact_indexes))
+
+    def candidate_key(item: CompactOptionalDropCandidate) -> tuple[bool, int]:
+        return (
+            item.component_id in protected_core_component_ids,
+            len(item.fact_indexes),
+        )
+
+    return min(candidates, key=candidate_key)
 
 
 def _static_optional_drop_candidate(

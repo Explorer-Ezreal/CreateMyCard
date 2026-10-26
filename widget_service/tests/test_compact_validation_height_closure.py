@@ -220,6 +220,15 @@ def test_weather_support_height_overflow_is_blocking_layout_capacity_error() -> 
     assert all(item.to_payload().get("severity") == "error" for item in diagnostics)
     assert any(item.actual.get("overflow", 0) > 2 for item in diagnostics)
     assert any("Occupancy:" in item.legacy_message for item in diagnostics)
+    height_fits = []
+    for diagnostic in diagnostics:
+        fits = diagnostic.actual.get("secondaryBodyFits", [])
+        if isinstance(fits, list):
+            height_fits.extend(fits)
+    support_fit = next(item for item in height_fits if item["componentId"] == "support")
+    assert support_fit["effectiveColumnCount"] == 1
+    assert support_fit["maxRetainedRowCount"] < support_fit["actualRowCount"]
+    assert support_fit["doesNotFitItemIndexes"]
 
 
 def test_anchor_multiline_support_expands_from_the_bottom_without_overlap() -> None:

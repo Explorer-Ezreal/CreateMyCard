@@ -2218,10 +2218,11 @@ class PromptBuilder:
             capacity_fits = strategy.get("capacityFits")
             if isinstance(capacity_fits, list) and capacity_fits:
                 payload["instruction"] += (
-                    " capacityFits 给出当前固定容量组件的精确切分：directlyFits 是按当前顺序"
-                    "可直接放入该组件的条目，doesNotFit 是超出该组件合同的条目。先用它重选"
-                    "合法组件和布局，不要反复提交相同超限组合；它本身不授权删事实，只有"
-                    "optionalDrop 或 approvedOmissions 明确列出的非 Action 事实才允许省略。"
+                    " capacityFits 给出当前组件按固定上限或父区高度计算的精确切分："
+                    "directlyFits 是可直接保留的条目，doesNotFit 是当前组件放不下的条目。"
+                    "先用它重选合法组件和布局，不要反复提交相同超限组合；它本身不授权删"
+                    "事实，只有 optionalDrop 或 approvedOmissions 明确列出的非 Action 事实"
+                    "才允许省略。"
                 )
         if is_design_compact:
             omissions = _approved_omissions(compact_plan, repair_strategy)
