@@ -50,6 +50,7 @@ from services.compact_dsl_argument_repair import (
     recover_compact_dsl_content,
 )
 from services.compact_dsl_interface_retry import run_compact_dsl_with_retry
+from services.daily_usage_limiter import DailyUsageError, DailyUsageLimiter, DailyUsageRecord
 from services.generation_retry_policy import retry_policy_details
 from services.generation_trace_recorder import (
     trace_increment_retry,
@@ -717,8 +718,14 @@ def _build_plugin_stream_response(
     出参：插件顶层始终成功；业务异常说明和完整旧消息放入 streamContent。
     """
     resolved_streaming_text_id = streaming_text_id or legacy_message.requestId or uuid.uuid4().hex
+    message_payload = legacy_message.model_dump(mode="json")
+    daily_usage_message = _daily_usage_error_message(legacy_message.errorCode)
+    if daily_usage_message is not None:
+        error = message_payload.get("error")
+        if isinstance(error, dict):
+            error["message"] = daily_usage_message
     stream_content = json.dumps(
-        legacy_message.model_dump(mode="json"),
+        message_payload,
         ensure_ascii=False,
         separators=(",", ":"),
     )
@@ -750,10 +757,30 @@ def _build_plugin_stream_response(
     )
 
 
+def _daily_usage_error_message(error_code: str) -> str | None:
+    message: str | None = None
+    if error_code in (
+        ErrorCode.DAILY_USAGE_LIMIT_EXCEEDED.value,
+        ErrorCode.DAILY_USAGE_LIMIT_UNAVAILABLE.value,
+    ):
+        settings = get_settings()
+        messages = {
+            ErrorCode.DAILY_USAGE_LIMIT_EXCEEDED.value: settings.daily_usage_limit_exceeded_message,
+            ErrorCode.DAILY_USAGE_LIMIT_UNAVAILABLE.value: (
+                settings.daily_usage_limit_unavailable_message
+            ),
+        }
+        message = messages.get(error_code)
+    return message
+
+
 def _error_explanation(error_code: str) -> str:
     """把内部错误码转换成主 Agent 可理解、可采取下一步动作的异常说明。"""
     if not error_code:
         return ""
+    daily_usage_message = _daily_usage_error_message(error_code)
+    if daily_usage_message is not None:
+        return f"请向用户回复“{daily_usage_message}”，并停止本轮自动调用"
     return ERROR_EXPLANATIONS.get(error_code, DEFAULT_ERROR_EXPLANATION)
 
 
@@ -889,6 +916,36 @@ async def _heartbeat_sender(
         logger.error(f"{_MODULE} widget_operation_ws_heartbeat_failed", exc_info=True)
 
 
+async def _check_daily_usage(
+    operation: str,
+    payload: dict[str, Any],
+    request_id: str | None,
+    limiter: DailyUsageLimiter | None,
+) -> DailyUsageRecord | None:
+    record: DailyUsageRecord | None = None
+    if operation not in GENERATION_OPERATIONS:
+        logger.info(f"[Daily Usage] bypass operation={operation} reason=non_generation")
+        return record
+    if not get_settings().enable_daily_usage_limit:
+        logger.info(f"[Daily Usage] bypass operation={operation} reason=disabled")
+        return record
+    uid = _trace_uid_from_raw_payload(payload)
+    if not uid.strip():
+        logger.info(f"[Daily Usage] bypass operation={operation} reason=missing_uid")
+        return record
+    if not request_id or not request_id.strip():
+        logger.info(f"[Daily Usage] bypass operation={operation} reason=missing_request_id")
+        return record
+    if limiter is None:
+        logger.error(
+            f"[Daily Usage] check_failed operation={operation} reason=client_not_initialized "
+            "action=bypass record_required=False"
+        )
+        return record
+    record = await limiter.check(uid, request_id)
+    return record
+
+
 async def _serve_operation_websocket(
     websocket: WebSocket,
     operation: str,
@@ -918,6 +975,7 @@ async def _serve_operation_websocket(
     logger.info(f"{_MODULE} widget_operation_ws_connected operation={operation}")
     try:
         model_runtime = getattr(websocket.app.state, "model_runtime", None)
+        daily_usage_limiter = getattr(websocket.app.state, "daily_usage_limiter", None)
         service = get_service(model_runtime)
         while True:
             card_id = str(uuid.uuid4())
@@ -998,11 +1056,16 @@ async def _serve_operation_websocket(
             request_id = raw_request_id
             arguments: dict[str, Any] = {}
             heartbeat_task: asyncio.Task | None = None
+            daily_usage_record: DailyUsageRecord | None = None
+            daily_usage_record_started = False
             streaming_text_id = request_id or uuid.uuid4().hex
             metrics.task_started()
             try:
                 if not isinstance(payload, dict):
                     raise ValueError("WebSocket request body must be a JSON object")
+                daily_usage_record = await _check_daily_usage(
+                    operation, payload, raw_request_id, daily_usage_limiter
+                )
                 content_repaired = await _repair_compact_dsl_content_if_needed(
                     payload,
                     operation,
@@ -1158,6 +1221,7 @@ async def _serve_operation_websocket(
                         result_data.get("suggestSize"),
                         directive_size,
                     )
+                    end_command_enabled = _widget_directive_commands_enabled()
                     if not await _send_widget_directive_command(
                         websocket,
                         payload,
@@ -1170,6 +1234,15 @@ async def _serve_operation_websocket(
                         artifact_url,
                     ):
                         return
+                    countable = (
+                        end_command_enabled
+                        and result_data.get("status") == "success"
+                        and directive_state is WidgetDirectiveState.SUCCESS
+                    )
+                    if daily_usage_record is not None and countable:
+                        assert daily_usage_limiter is not None
+                        daily_usage_record_started = True
+                        await daily_usage_limiter.record_success(daily_usage_record)
                 plugin_response = _build_plugin_stream_response(
                     result_message,
                     streaming_text_id,
@@ -1187,6 +1260,32 @@ async def _serve_operation_websocket(
                     operation,
                     request_id,
                     "final",
+                ):
+                    return
+            except DailyUsageError as exc:
+                trace_status = "failed"
+                trace_error_code = exc.code.value
+                logger.warning(
+                    f"{_MODULE} daily_usage_rejected operation={operation} "
+                    f"request_id={request_id} error_code={exc.code.value}"
+                )
+                error_message = WidgetWebSocketErrorMessage(
+                    tool=operation,
+                    operation=operation,
+                    requestId=request_id,
+                    errorCode=exc.code.value,
+                    error={
+                        "message": str(exc),
+                        "details": {"stage": "dailyUsage", "retryable": False},
+                    },
+                )
+                plugin_response = _build_plugin_stream_response(error_message, streaming_text_id)
+                if not await _send_websocket_json(
+                    websocket,
+                    plugin_response.model_dump(mode="json", exclude_none=True),
+                    operation,
+                    request_id,
+                    "final_error",
                 ):
                     return
             except ValueError as exc:
@@ -1312,6 +1411,13 @@ async def _serve_operation_websocket(
                 ):
                     return
             finally:
+                if daily_usage_record is not None and not daily_usage_record_started:
+                    logger.info(
+                        f"[Daily Usage] record_skipped operation={operation} "
+                        f"record_id={daily_usage_record.record_id} "
+                        f"status={trace_status} directive_started={widget_directive_started} "
+                        "reason=success_delivery_not_confirmed"
+                    )
                 if operation == COMPACT_DSL_OPERATION:
                     service.trace_recorder.finalize(
                         status=trace_status,
