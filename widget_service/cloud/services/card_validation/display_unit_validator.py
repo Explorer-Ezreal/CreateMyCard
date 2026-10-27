@@ -36,15 +36,15 @@ class DisplayUnitValidator(BaseValidator):
             content = component.get("content")
             if not isinstance(component_id, str) or not isinstance(content, str):
                 continue
-            matched_rules = [
-                unit_rule_for_path(path, unit_rules)
-                for path in expression_references(content)
-            ]
-            matched_rules = [rule for rule in matched_rules if rule is not None]
+            matched_rules = []
+            for path in expression_references(content):
+                rule = unit_rule_for_path(path, unit_rules)
+                if rule is not None:
+                    matched_rules.append((path, rule))
             if len(matched_rules) != 1:
                 continue
-            rule = matched_rules[0]
-            inline_count = matching_unit_literal_count(content, rule)
+            path, rule = matched_rules[0]
+            inline_count = matching_unit_literal_count(content, rule, path)
             sibling_count = self._matching_sibling_count(
                 component_id,
                 rule,
@@ -67,9 +67,8 @@ class DisplayUnitValidator(BaseValidator):
                     fix_hint="删除表达式或相邻 Text 中重复追加的单位，仅保留字段自身内容。",
                 )
             elif not rule.unit_included and visible_unit_count == 0 and not skip_missing_unit:
-                severity = "warning" if "%" in rule.units else "error"
                 reporter.add(
-                    severity,
+                    "error",
                     "DISPLAY_UNIT_MISSING",
                     self.stage,
                     "genui",
