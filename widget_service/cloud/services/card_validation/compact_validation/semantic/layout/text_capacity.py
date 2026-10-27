@@ -19,7 +19,7 @@ def static_plan_capacity_errors(plan: dict[str, Any], size: str) -> list[str]:
         return [
             prefix + f"当前静态布局最多承载{maximum_actions}个必要动作，不得删除动作以适配容量。"
         ]
-    if not objects and any("text" in item for item in facts):
+    if not objects and not actions and any("text" in item for item in facts):
         return [prefix + "正文至少有一个object组，不能将全部正文移到shared标题或说明。"]
     return []
 

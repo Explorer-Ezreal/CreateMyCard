@@ -1,5 +1,11 @@
 # Compact DSL 现有校验规则分类清单 v1
 
+2026-10-27：Plan Action 覆盖仍由 `compact_plan.py` 的生成编排层检查，动作素材履约仍归
+语义／跨文件一致性的 `semantic/plan_contracts.py`。已接受 Plan 含至少三个不同 Action，且 DSL
+已从 root 可达地保留至少两个不同、handler 精确匹配的合法按钮时，未落位的第三个及
+后续 Action 覆盖缺失降为 warning，对应素材“无匹配按钮”不重复阻断。这是生成阶段的容量降级，
+不迁移校验归属，不放宽单按钮合同、事件参数、可达性、重复动作或布局槽位检查。
+
 2026-10-26：动态 `info_required[].text` 是否为 `userQuery` 连续原文片段，归信息计划合同，判定位于
 `compact_plan.py`，不迁入 Compact DSL 校验目录。该来源不匹配由阻断错误调整为 warning，保留模型提交的
 事实，不单独触发 Plan 修复；初始 Plan 提示仍要求优先逐字引用。`dataId`、`actionId` 来源、Action 合同及
