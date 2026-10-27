@@ -1,5 +1,15 @@
 # Compact DSL 现有校验规则分类清单 v1
 
+2026-10-27 单位校验补充：缺失、重复单位归语义／展示语义，继续由公共
+`card_validation/display_unit_validator.py` 判定，`display_unit_rules.py` 提供绑定单位与相邻拼接匹配。
+单位后允许空白或标点分隔，不跨动态字段借用单位，不按业务文案新增后缀特例。
+缺失与重复单位在既有检查范围内统一为 error，删除百分比缺失降为 warning 的符号特例。
+自动去重仍只删除独立纯单位片段，不删除带业务文案的字符串；判定归展示语义，修复边界保持不变。
+`validator.py` 适配专项结果；`widget_generation_service.py` 仅编排：Compact 创建关闭完整产物校验时仍执行
+同一单位检查，使错误进入已有质量修复。开启完整校验时不重复调用专项检查；模板豁免保持不变。
+不新增 Compact 转换前检查、不移动既有规则、不增加重试预算。回归见 `test_display_units.py` 与
+`test_generation_unit_validation.py`；复杂表达式仍沿用现有支持范围，不引入通用解析器。
+
 2026-10-27：Plan Action 覆盖仍由 `compact_plan.py` 的生成编排层检查，动作素材履约仍归
 语义／跨文件一致性的 `semantic/plan_contracts.py`。已接受 Plan 含至少三个不同 Action，且 DSL
 已从 root 可达地保留至少两个不同、handler 精确匹配的合法按钮时，未落位的第三个及

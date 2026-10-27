@@ -1683,17 +1683,13 @@ class WidgetGenerationService:
                     latest_processing_result,
                 )
                 return conversion_errors
-            if not settings.enable_artifact_validation and not policy.single_step:
+            unit_validation_only = (
+                not settings.enable_artifact_validation and not policy.single_step
+            )
+            if unit_validation_only:
                 logger.info(
                     f"{_MODULE} artifact_validation_skipped operation={policy.operation} "
                     "reason=enable_artifact_validation_false"
-                )
-                self._append_repair_record(
-                    repair_records,
-                    model_call_phase,
-                    quality_repair_attempt_count,
-                    source_dsl,
-                    latest_processing_result,
                 )
                 with trace_attempt(**validation_attempts):
                     trace_record(
@@ -1702,7 +1698,15 @@ class WidgetGenerationService:
                         status="skipped",
                         details={"reason": "enable_artifact_validation_false"},
                     )
-                return []
+                if policy.processor_kind != DslProcessorKind.DESIGN_COMPACT:
+                    self._append_repair_record(
+                        repair_records,
+                        model_call_phase,
+                        quality_repair_attempt_count,
+                        source_dsl,
+                        latest_processing_result,
+                    )
+                    return []
 
             standard_dsl = processing_result.standard_dsl
             artifact_build_started_at = time.perf_counter()
@@ -1742,7 +1746,11 @@ class WidgetGenerationService:
             artifact_validator = ArtifactValidator(asset_mapper.mapping)
             artifact_validation_started_at = time.perf_counter()
             colorless = colorless_source() or single_step_theme
-            if colorless:
+            if unit_validation_only:
+                validation_errors = artifact_validator.validate_display_units(
+                    artifact, effective_data_capabilities
+                )
+            elif colorless:
                 validation_errors = artifact_validator.validate_layout(artifact, protocol_profile)
             else:
                 validation_errors = artifact_validator.validate(artifact, protocol_profile)
@@ -1770,11 +1778,15 @@ class WidgetGenerationService:
                 )
             with trace_attempt(**validation_attempts):
                 trace_step(
-                    "artifact_validation.completed",
+                    "display_unit_validation.completed"
+                    if unit_validation_only else "artifact_validation.completed",
                     stage="artifactValidation",
                     status="failed" if validation_errors else "success",
                     duration_ms=self._elapsed_ms(artifact_validation_started_at),
-                    details={"errorCount": len(validation_errors)},
+                    details={
+                        "errorCount": len(validation_errors),
+                        "scope": "display_units" if unit_validation_only else "full",
+                    },
                     json_artifacts={
                         "artifact_validation_input": artifact.model_dump(
                             mode="json",
