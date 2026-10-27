@@ -199,6 +199,83 @@ def test_extract_preserves_numbers_units_and_qualifiers() -> None:
 
 
 @pytest.mark.usefixtures("static_policy")
+def test_missing_source_texts_is_warning_for_unprotected_static_text() -> None:
+    value = plan([fact("通勤助手")])
+    facts = value.get("info_required")
+    assert isinstance(facts, list)
+    facts[0].pop("sourceTexts")
+    raw = json.dumps({"name": "submit_card_plan", "arguments": value}, ensure_ascii=False)
+
+    result = parse_compact_plan_call(raw, task("创建一张通勤助手小卡片"))
+
+    assert result.plan.get("info_required", [])[0].get("text") == "通勤助手"
+    assert any("缺少 sourceTexts" in warning for warning in result.warnings)
+
+
+@pytest.mark.usefixtures("static_policy")
+def test_action_group_membership_is_removed_with_warning() -> None:
+    value = plan(
+        [
+            fact("通勤助手"),
+            {
+                "requirement": "一键导航到公司",
+                "priority": "must",
+                "componentHints": ["CardButton"],
+                "actionId": "event.startNavigate",
+            },
+        ],
+        [
+            {"id": "title", "kind": "shared", "factIndexes": [0]},
+            {"id": "action", "kind": "object", "factIndexes": [1]},
+        ],
+    )
+    current_task = task("创建一张通勤助手小卡片，支持一键导航到公司")
+    current_task["eventCandidates"] = [{"id": "event.startNavigate"}]
+    raw = json.dumps({"name": "submit_card_plan", "arguments": value}, ensure_ascii=False)
+
+    result = parse_compact_plan_call(raw, current_task)
+
+    assert result.plan.get("contentGroups") == [
+        {"id": "title", "kind": "shared", "factIndexes": [0]},
+    ]
+    assert any("已自动移出正文分组" in warning for warning in result.warnings)
+
+
+@pytest.mark.usefixtures("static_policy")
+def test_action_text_collision_keeps_registered_action_with_warning() -> None:
+    action_id = "event.startNavigate"
+    value = plan(
+        [
+            {
+                "requirement": "从家到公司的导航入口",
+                "priority": "must",
+                "componentHints": ["CardButton"],
+                "text": "去公司导航",
+                "actionId": action_id,
+                "displayRole": "title",
+            },
+        ],
+        [{"id": "route", "kind": "object", "factIndexes": [0]}],
+    )
+    current_task = task("生成从家里导航到公司的卡片，点击一键导航去公司")
+    current_task["eventCandidates"] = [{"id": action_id}]
+    raw = json.dumps({"name": "submit_card_plan", "arguments": value}, ensure_ascii=False)
+
+    result = parse_compact_plan_call(raw, current_task)
+
+    assert result.plan.get("info_required") == [
+        {
+            "requirement": "从家到公司的导航入口",
+            "priority": "must",
+            "componentHints": ["CardButton"],
+            "actionId": action_id,
+        }
+    ]
+    assert result.plan.get("contentGroups") == []
+    assert any("已优先保留 Action" in warning for warning in result.warnings)
+
+
+@pytest.mark.usefixtures("static_policy")
 @pytest.mark.parametrize(
     "display,reference",
     [
@@ -1504,11 +1581,15 @@ def test_dsl_cannot_drop_any_accepted_core_by_missing_program_keyword(part):
     assert static_group_errors(source("ContentBlock", {"body": "主体"}), value)
 
 
-def test_closed_plan_still_rejects_paraphrased_text():
+def test_closed_plan_keeps_paraphrased_text_with_warning():
     with content_policy_scope(EXISTING_CONTENT_POLICY):
         value = {"info_required": [{"requirement": "说明", "priority": "must", "text": "携证出行"}]}
-        with pytest.raises(CompactPlanValidationError):
-            accept(value, "带证件出门")
+        raw = json.dumps({"name": "submit_card_plan", "arguments": value}, ensure_ascii=False)
+
+        result = parse_compact_plan_call(raw, task("带证件出门"))
+
+        assert result.plan.get("info_required", [])[0].get("text") == "携证出行"
+        assert any("must be copied from userQuery" in warning for warning in result.warnings)
 
 
 @pytest.mark.usefixtures("static_policy")

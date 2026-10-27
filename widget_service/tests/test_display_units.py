@@ -205,7 +205,49 @@ def test_validator_reports_missing_unit_for_raw_number():
         }
     )
 
-    assert reporter.has_code("DISPLAY_UNIT_MISSING")
+    diagnostics = [
+        item for item in reporter.diagnostics if item.code == "DISPLAY_UNIT_MISSING"
+    ]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity == "warning"
+
+
+def test_percentage_unit_with_separator_only_reports_warning():
+    reporter = validate_card(
+        artifact={
+            "genui": _dsl(
+                "{{ ${/data/battery/level} + '% | ' + ${/data/battery/status} }}"
+            ),
+            "cardSpec": _card_spec(),
+            "effectiveCapabilities": {
+                "data": [_capability(unit_included=False).model_dump(mode="json")]
+            },
+        }
+    )
+
+    diagnostics = [
+        item for item in reporter.diagnostics if item.code == "DISPLAY_UNIT_MISSING"
+    ]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity == "warning"
+
+
+def test_validator_keeps_non_percentage_missing_unit_as_error():
+    reporter = validate_card(
+        artifact={
+            "genui": _dsl("{{ ${/data/battery/level} }}"),
+            "cardSpec": _card_spec(),
+            "effectiveCapabilities": {
+                "data": [_capability(unit_included=False, unit="天").model_dump(mode="json")]
+            },
+        }
+    )
+
+    diagnostics = [
+        item for item in reporter.diagnostics if item.code == "DISPLAY_UNIT_MISSING"
+    ]
+    assert len(diagnostics) == 1
+    assert diagnostics[0].severity == "error"
 
 
 def _template_unit_dsl(

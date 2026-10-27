@@ -15,6 +15,7 @@ from services.card_validation.compact_validation.syntax.expressions import (
 )
 from services.compact_component_semantics import CORE_INFORMATION_COMPONENT_TYPES
 from services.compact_dsl_a2ui_converter import ComponentRow
+from services.compact_plan import compact_plan_overflow_action_ids
 from services.compact_whole_card_click import accepted_whole_card_click
 from services.event_matching import event_handlers_match
 
@@ -215,6 +216,11 @@ def _collect_plan_asset_assignment_errors(
         for component in components
         if component.component_type in _BUTTON_COMPONENT_TYPES
     ]
+    overflow_action_ids = compact_plan_overflow_action_ids(
+        components,
+        compact_plan,
+        task_spec,
+    )
     action_assignments = assignments.get("actions")
     if isinstance(action_assignments, list):
         for assignment in action_assignments:
@@ -234,6 +240,8 @@ def _collect_plan_asset_assignment_errors(
                 button for button in buttons if _component_uses_handler(button, handler)
             ]
             if not matching_buttons:
+                if action_id in overflow_action_ids:
+                    continue
                 errors.append(
                     f"assetAssignments action {action_id!r} has no matching button component."
                 )

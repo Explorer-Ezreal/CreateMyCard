@@ -1441,6 +1441,77 @@ def test_static_plan_fact_can_span_label_and_value_in_same_item(
     assert result.errors == ()
 
 
+def test_third_missing_action_is_warning_after_two_valid_buttons() -> None:
+    daily = {"call": "openDaily", "args": {"target": "daily"}}
+    favorite = {"call": "openFavorite", "args": {"target": "favorite"}}
+    bluetooth = {"call": "setBluetooth", "args": {"enabled": True}}
+    spec = {
+        "size": "2x4",
+        "eventCandidates": [
+            {"id": "event.daily", **daily},
+            {"id": "event.favorite", **favorite},
+            {"id": "event.bluetooth", **bluetooth},
+        ],
+        "dataModelSchema": {"data": {}},
+    }
+    plan = {
+        "info_required": [
+            {"requirement": "每日推荐", "actionId": "event.daily"},
+            {"requirement": "收藏歌单", "actionId": "event.favorite"},
+            {"requirement": "蓝牙开关", "actionId": "event.bluetooth"},
+        ]
+    }
+    source = "\n".join(
+        [
+            '["root","Column",{},["daily","bluetooth"]]',
+            '["daily","CardButton",{"label":"每日推荐",'
+            f'"onClick":[{json.dumps(daily)}]' + "}]",
+            '["bluetooth","CardButton",{"label":"蓝牙开关",'
+            f'"onClick":[{json.dumps(bluetooth)}]' + "}]",
+        ]
+    )
+
+    result = evaluate_compact_plan_coverage(source, plan, spec)
+
+    assert result.errors == ()
+    assert len(result.warnings) == 1
+    assert "event.favorite" in result.warnings[0]
+
+
+def test_missing_actions_remain_errors_when_only_one_button_is_visible() -> None:
+    daily = {"call": "openDaily", "args": {"target": "daily"}}
+    favorite = {"call": "openFavorite", "args": {"target": "favorite"}}
+    bluetooth = {"call": "setBluetooth", "args": {"enabled": True}}
+    spec = {
+        "size": "2x4",
+        "eventCandidates": [
+            {"id": "event.daily", **daily},
+            {"id": "event.favorite", **favorite},
+            {"id": "event.bluetooth", **bluetooth},
+        ],
+        "dataModelSchema": {"data": {}},
+    }
+    plan = {
+        "info_required": [
+            {"requirement": "每日推荐", "actionId": "event.daily"},
+            {"requirement": "收藏歌单", "actionId": "event.favorite"},
+            {"requirement": "蓝牙开关", "actionId": "event.bluetooth"},
+        ]
+    }
+    source = "\n".join(
+        [
+            '["root","Column",{},["daily"]]',
+            '["daily","CardButton",{"label":"每日推荐",'
+            f'"onClick":[{json.dumps(daily)}]' + "}]",
+        ]
+    )
+
+    result = evaluate_compact_plan_coverage(source, plan, spec)
+
+    assert len(result.errors) == 2
+    assert result.warnings == ()
+
+
 def test_static_plan_fact_cannot_span_different_structured_items() -> None:
     plan = {
         "info_required": [

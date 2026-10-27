@@ -67,8 +67,9 @@ class DisplayUnitValidator(BaseValidator):
                     fix_hint="删除表达式或相邻 Text 中重复追加的单位，仅保留字段自身内容。",
                 )
             elif not rule.unit_included and visible_unit_count == 0 and not skip_missing_unit:
+                severity = "warning" if "%" in rule.units else "error"
                 reporter.add(
-                    "error",
+                    severity,
                     "DISPLAY_UNIT_MISSING",
                     self.stage,
                     "genui",
