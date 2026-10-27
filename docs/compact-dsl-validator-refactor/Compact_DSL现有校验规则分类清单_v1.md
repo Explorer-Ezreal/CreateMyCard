@@ -1,5 +1,10 @@
 # Compact DSL 现有校验规则分类清单 v1
 
+2026-10-26：动态 `info_required[].text` 是否为 `userQuery` 连续原文片段，归信息计划合同，判定位于
+`compact_plan.py`，不迁入 Compact DSL 校验目录。该来源不匹配由阻断错误调整为 warning，保留模型提交的
+事实，不单独触发 Plan 修复；初始 Plan 提示仍要求优先逐字引用。`dataId`、`actionId` 来源、Action 合同及
+后续 Plan 覆盖、绑定、协议和布局容量检查不受影响。
+
 2026-10-25 静态展示质量增量：`displayRole`、`presentationStyle`、`paletteFamily` 的静态专属形状与
 枚举检查归 `compact_plan.py` 的信息计划合同；动态 Plan 不接受这些字段。可省略属性标签的字段形状
 由 `static_content_components.py` 共享展开检查，归语法／组件；value 仍必填，显式 label 不得为空。
@@ -150,6 +155,8 @@ enable_drop_plan_fact_validation 默认关闭；开启时在 Repair 阶段恢复
 2026-10-15：SecondaryBody.items数量上限由4改为6，归属语法／组件合同，仍委托
 compact_high_level_components.py的共享组件校验，不在分类入口重复实现。实际数量超过6时进入
 既有组件修复，由compact_repair_strategy.py说明可选补充项清理与Plan保护；容量归属与Drop授权不变。
+`COMPACT_LAYOUT_HEIGHT_OVERFLOW` 可附带 `SecondaryBody` 可保留行与 `doesNotFit` 条目证据；
+该证据仍归属语义／布局几何，Drop 选择与核心组件保护仍归属修复编排，不在校验入口重复判定。
 
 2026-10-14 单例检视补充：2×4 SecondaryBody 单行的完整值与静态标签共同核算宽度。
 归属语义／布局与视觉约束，落点 semantic/layout/text_width.py，复用现有同行压力函数及建议；
@@ -1281,6 +1288,7 @@ BASE-02 至 BASE-04 同样不在本次文档更新中修正规则。新反馈涉
 | 检查项 | 分类与实际落点 | 归属理由 |
 | --- | --- | --- |
 | 动态进度必须为已声明数值类型 | 语义／数据绑定，`semantic/bindings.py`；复用 `compact_component_bindings.py` 的组件绑定合同 | 检查绑定源类型；去除 `/__display` 私有路径豁免，沿用 `COMPACT_BINDING_PROGRESS_TYPE` |
+| InfoBlock 进度主值的数值来源 | 语义／数据绑定，`semantic/bindings.py` | 复用既有类型检查，以 `COMPACT_BINDING_INFO_BLOCK_PROGRESS_SOURCE` 携带展示路径、登记的 `numericSource` 和精确修复建议；不新增拒绝条件 |
 | 进度驱动与展示文字的登记关系 | 语义／数据绑定，`semantic/bindings.py` | 检查同对象同指标关系，不扩展布局或 Plan 编排职责 |
 | 完整产物进度引用首帧副本或非数值来源 | 公共绑定校验，`card_validation/progress_sources.py`，由公共 `BindingValidator` 调用 | 基于原始依赖和声明判断动态来源；代码 `BINDING_PROGRESS_SOURCE_INVALID`；转换后及保存前复用同一判定 |
 

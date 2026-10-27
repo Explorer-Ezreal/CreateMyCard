@@ -285,16 +285,14 @@ def _literal_matches_rule(term: str, rule: DisplayUnitRule) -> bool:
 
 
 def _value_matches_rule(value: str, rule: DisplayUnitRule) -> bool:
+    """只将独立单位或受控后缀归属到当前动态数值字段。"""
     normalized_literal = _normalized_unit(value)
     for unit in rule.units:
         for alias in _normalized_aliases(unit):
-            for match in re.finditer(re.escape(alias), normalized_literal):
-                before = normalized_literal[:match.start()]
-                after = normalized_literal[match.end():]
-                if before and before[-1].isalpha():
-                    continue
-                if after and after[0].isalpha() and after not in _UNIT_TEXT_SUFFIXES:
-                    continue
+            if not normalized_literal.startswith(alias):
+                continue
+            suffix = normalized_literal.removeprefix(alias)
+            if suffix in _UNIT_TEXT_SUFFIXES:
                 return True
     return False
 
