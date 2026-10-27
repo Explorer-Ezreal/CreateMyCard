@@ -27,15 +27,20 @@ def collect_actions_only_plan_errors(
     compact_plan: dict[str, Any] | None,
     errors: list[str],
 ) -> None:
-    """无内容双动作必须由完整的已接受计划授权，不豁免任何展示事实。"""
+    """无正文动作变体必须由完整的已接受计划授权，不豁免任何展示事实。"""
     root = next((row for row in source_components if row.component_id == "root"), None)
     if root is None:
         return
     actions_only = False
+    title_action_only = False
     if root.component_type == "Layout":
-        if root.props.get("layout") != "S-content-dual-action":
+        layout = root.props.get("layout")
+        if layout == "S-title-content-action":
+            title_action_only = root.props.get("variant") == "title-action"
+        elif layout == "S-content-dual-action":
+            actions_only = root.props.get("variant") == "actions-only" or len(root.children) == 2
+        else:
             return
-        actions_only = root.props.get("variant") == "actions-only" or len(root.children) == 2
     elif root.component_type == "Column":
         by_id = {row.component_id: row for row in source_components}
         buttons = []
@@ -44,11 +49,12 @@ def collect_actions_only_plan_errors(
             if child is not None and child.component_type == "CardButton":
                 buttons.append(child)
         actions_only = len(root.children) == 2 and len(buttons) == 2
-    if not actions_only:
+    if not actions_only and not title_action_only:
         return
     facts = compact_plan.get("info_required") if isinstance(compact_plan, dict) else None
     action_ids: set[str] = set()
-    valid = isinstance(facts, list) and len(facts) == 2
+    required_action_count = 1 if title_action_only else 2
+    valid = isinstance(facts, list) and len(facts) == required_action_count
     if isinstance(facts, list):
         for fact in facts:
             if not isinstance(fact, dict):
@@ -61,10 +67,14 @@ def collect_actions_only_plan_errors(
             if "dataId" in fact or "text" in fact:
                 valid = False
             action_ids.add(action_id)
-    if not valid or len(action_ids) != 2:
+    if not valid or len(action_ids) != required_action_count:
+        layout_name = "S-title-content-action title-action" if title_action_only else (
+            "S-content-dual-action actions-only"
+        )
+        action_count = "exactly one action" if title_action_only else "exactly two distinct actions"
         errors.append(
-            "S-content-dual-action actions-only requires an accepted Plan containing "
-            "exactly two distinct actions and no display facts; preserve all required content."
+            f"{layout_name} requires an accepted Plan containing {action_count} and no "
+            "display facts; preserve all required content."
         )
 
 
