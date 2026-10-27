@@ -1657,11 +1657,13 @@ def compact_plan_context(
             "不能删动作、改为子节点点击或因修复补回按钮。该动作没有按钮图标。"
         )
     fixed_dual_action = plan.get("layoutHints") == ["S-content-dual-action"]
+    fixed_title_action = plan.get("layoutHints") == ["S-title-content-action"]
     if conflicts:
         context_plan.pop("composition", None)
         context_plan["compositionNotes"] = conflicts
     asset_instruction = ""
     pure_action_instruction = ""
+    title_action_only = False
     facts = plan.get("info_required")
     if fixed_dual_action and isinstance(facts, list):
         if len(facts) == 2 and all("actionId" in fact for fact in facts):
@@ -1669,6 +1671,17 @@ def compact_plan_context(
                 "本轮只有两个必要动作、没有展示事实，使用 S-content-dual-action 的 "
                 "actions-only 变体，children 仅为两个 CardButton；"
                 "不生成内容槽、标题、占位正文、空容器或伪造状态。"
+            )
+    if fixed_title_action and isinstance(facts, list):
+        if len(facts) == 1 and isinstance(facts[0], dict):
+            fact = facts[0]
+            has_display_fact = "dataId" in fact or "text" in fact
+            title_action_only = isinstance(fact.get("actionId"), str) and not has_display_fact
+        if title_action_only:
+            pure_action_instruction = (
+                "本轮只有一个必要动作、没有展示事实，使用 S-title-content-action 的 "
+                "title-action 变体，children 仅为 SingleLineTitle 和 PillButton；"
+                "保留稳定标题和真实动作，不生成内容槽、占位正文、空容器或伪造状态。"
             )
     if "assetAssignments" in context_plan:
         asset_instruction = (
@@ -1737,7 +1750,12 @@ def compact_plan_context(
         "不按事实数量强制表格；TableText 先满足等权语义，再按实际行数核算 Recipe 高度。"
         "首选组件不适配时重组选型，保留全部事实、两个动作及其完整参数，不缩字或补造正文。"
         if fixed_dual_action
-        else "componentHints 与 layoutHints 不冻结组件实例或最终骨架，但不能无理由忽略。"
+        else (
+            "本轮唯一必要动作且没有展示事实时，S-title-content-action 必须使用 "
+            "title-action 变体，不得生成正文槽。"
+            if title_action_only
+            else "componentHints 与 layoutHints 不冻结组件实例或最终骨架，但不能无理由忽略。"
+        )
     )
     return (
         "# 已接受的 Compact Info Plan\n\n"

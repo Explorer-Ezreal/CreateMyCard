@@ -1558,6 +1558,8 @@ def test_summary_instructions_reuse_existing_stages_and_keep_semantic_responsibi
     assert "或/且" in plan_prompt
     assert "omittedContents" in plan_prompt
     assert "原始输入" in dsl_prompt
+    assert "title-action" in dsl_prompt
+    assert "不得添加任何正文来填满卡片" in dsl_prompt
     assert "不新增模型阶段" in plan_prompt
 
 
