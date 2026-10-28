@@ -171,7 +171,7 @@ def test_component_contract_migrates_without_stopping_before_global_limit() -> N
     assert resumed_targeted.retryable is True
 
 
-def test_duplicate_plan_fact_uses_targeted_then_escalated_repair() -> None:
+def test_duplicate_plan_fact_stays_in_targeted_deduplication_repair() -> None:
     tracker = CompactRepairStrategyTracker()
     issue = _issue(
         "Plan fact is displayed more than once in visible DSL: 最高心率 "
@@ -197,12 +197,41 @@ def test_duplicate_plan_fact_uses_targeted_then_escalated_repair() -> None:
     assert first.retry_target == "dsl_local_repair"
     assert "每个报错 dataId 最终只在一个可见属性中出现" in first.instruction
     assert "删除数据行" in first.instruction
-    assert second.repair_strategy == "parent_layout_recompose"
-    assert second.scope == "parent_layout"
-    assert "上一轮局部去重未闭合" in second.instruction
-    assert third.repair_strategy == "plan_guided_recompose"
-    assert third.scope == "full_dsl"
-    assert "为每个 dataId 只分配一个可见位置" in third.instruction
+    assert second.repair_strategy == "deduplicate_visible_facts"
+    assert second.scope == "information_group"
+    assert second.retry_target == "dsl_local_repair"
+    assert "重复超额数量没有减少" in second.instruction
+    assert third.repair_strategy == "deduplicate_visible_facts"
+    assert third.scope == "information_group"
+    assert third.retry_target == "dsl_local_repair"
+
+
+def test_duplicate_plan_fact_does_not_trigger_prior_layout_recomposition() -> None:
+    tracker = CompactRepairStrategyTracker()
+    layout_issue = _issue("component body: vertical layout requires at least 142vp within 126vp.")
+    duplicate_issue = _issue(
+        "Plan fact is displayed more than once in visible DSL: 当前温度 "
+        "(/data/weather/current/temperatureText); expected 1, got 2.",
+        code="COMPACT_PLAN_COVERAGE_FAILED",
+    )
+    duplicate_issue["duplicateFacts"] = [{
+        "dataId": "/data/weather/current/temperatureText",
+        "expectedVisibleCount": 1,
+        "actualVisibleCount": 2,
+        "occurrences": [],
+    }]
+
+    tracker.next_directive("dsl-layout", [layout_issue])
+    directive = tracker.next_directive(
+        "dsl-duplicate",
+        [duplicate_issue],
+        compact_plan={},
+        task_spec={},
+    )
+
+    assert directive.repair_strategy == "deduplicate_visible_facts"
+    assert directive.scope == "information_group"
+    assert directive.retry_target == "dsl_local_repair"
 
 
 def test_info_block_progress_value_error_gets_precise_non_degrading_repair() -> None:

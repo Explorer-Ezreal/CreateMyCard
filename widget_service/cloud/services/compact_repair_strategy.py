@@ -237,6 +237,31 @@ def _has_duplicate_plan_facts(quality_errors: list[dict[str, Any]]) -> bool:
     return False
 
 
+def _duplicate_plan_fact_excess_count(quality_errors: list[dict[str, Any]]) -> int | None:
+    """返回重复事实超出其允许展示次数的总数。"""
+    structured_count = 0
+    has_structured_facts = False
+    message_count = 0
+    for issue in quality_errors:
+        duplicate_facts = issue.get("duplicateFacts")
+        if isinstance(duplicate_facts, list) and duplicate_facts:
+            has_structured_facts = True
+            for fact in duplicate_facts:
+                if not isinstance(fact, dict):
+                    continue
+                actual_count = fact.get("actualVisibleCount")
+                expected_count = fact.get("expectedVisibleCount")
+                if isinstance(actual_count, int) and isinstance(expected_count, int):
+                    structured_count += max(0, actual_count - expected_count)
+            continue
+        message = str(issue.get("message") or "").strip().lower()
+        if message.startswith(_DUPLICATE_PLAN_FACT_PREFIX):
+            message_count += 1
+    if has_structured_facts:
+        return structured_count
+    return message_count if message_count else None
+
+
 def _has_missing_plan_fact_error(quality_errors: list[dict[str, Any]]) -> bool:
     """只识别非 Action 事实缺失；重复事实与动作缺失不能授权 Drop。"""
     for issue in quality_errors:
@@ -306,7 +331,7 @@ def _capacity_overflow_fact_indexes(capacity_fits: list[dict[str, Any]]) -> set[
     return indexes
 
 
-def _duplicate_fact_instruction(*, scope: str) -> str:
+def _duplicate_fact_instruction(*, duplicate_count_not_reduced: bool) -> str:
     instruction = (
         "修复 duplicateFacts 列出的重复展示事实。逐项核对 occurrences，确保每个报错 "
         "dataId 最终只在一个可见属性中出现。优先保留同时具有明确对象、标签、完整值和单位的"
@@ -319,13 +344,10 @@ def _duplicate_fact_instruction(*, scope: str) -> str:
         "去重后 SecondaryBody 仍只能承担辅助信息；若核心组件或当前信息组语义不再成立，"
         "在本轮允许范围内重组选型，但不得重新引入重复绑定。"
     )
-    if scope == "parent_layout":
+    if duplicate_count_not_reduced:
         instruction += (
-            "上一轮局部去重未闭合；重新组织受影响信息组及其直接父布局，不再提交相同组件组合。"
-        )
-    elif scope == "full_dsl":
-        instruction += (
-            "重复问题已持续存在；从已接受 Plan 重建完整 DSL，为每个 dataId 只分配一个可见位置。"
+            "上一轮重复超额数量没有减少；本轮必须删除至少一个 occurrences 中的重复引用，"
+            "不得迁移、复制或新增该 dataId 的可见绑定。"
         )
     return instruction
 
@@ -717,24 +739,17 @@ def _non_layout_directive(
     category_attempt: int,
     no_progress: bool,
     force_targeted: bool = False,
+    duplicate_count_not_reduced: bool = False,
 ) -> CompactRepairDirective:
     repeated_root_cause = consecutive_failures >= 2 or no_progress
     duplicate_plan_facts = category == "plan_coverage" and _has_duplicate_plan_facts(quality_errors)
-    if duplicate_plan_facts and category_attempt == 1 and not no_progress:
+    if duplicate_plan_facts:
         scope = "information_group"
         strategy = "deduplicate_visible_facts"
         retry_target = "dsl_local_repair"
-        instruction = _duplicate_fact_instruction(scope=scope)
-    elif duplicate_plan_facts and category_attempt == 2:
-        scope = "parent_layout"
-        strategy = "parent_layout_recompose"
-        retry_target = "dsl_recompose"
-        instruction = _duplicate_fact_instruction(scope=scope)
-    elif duplicate_plan_facts:
-        scope = "full_dsl"
-        strategy = "plan_guided_recompose"
-        retry_target = "dsl_recompose"
-        instruction = _duplicate_fact_instruction(scope=scope)
+        instruction = _duplicate_fact_instruction(
+            duplicate_count_not_reduced=duplicate_count_not_reduced,
+        )
     elif force_targeted:
         scope = "information_group" if category == "plan_coverage" else "component"
         strategy = (
@@ -1105,6 +1120,7 @@ class CompactRepairStrategyTracker:
         self._latest_capacity_fits: list[dict[str, Any]] = []
         self._capacity_overflow_limit: int | None = None
         self._capacity_overflow_fact_indexes: set[int] = set()
+        self._previous_duplicate_excess_count: int | None = None
 
     @property
     def allowed_omitted_fact_indexes(self) -> tuple[int, ...]:
@@ -1175,6 +1191,14 @@ class CompactRepairStrategyTracker:
     ) -> CompactRepairDirective:
         """根据当前失败和请求内历史选择局部修复或结构重组。"""
         category = _issue_category(quality_errors)
+        duplicate_excess_count = _duplicate_plan_fact_excess_count(quality_errors)
+        duplicate_count_not_reduced = False
+        if duplicate_excess_count is not None:
+            previous_count = self._previous_duplicate_excess_count
+            duplicate_count_not_reduced = (
+                previous_count is not None and duplicate_excess_count >= previous_count
+            )
+        self._previous_duplicate_excess_count = duplicate_excess_count
         capacity_fits = _capacity_fits_from_issues(quality_errors)
         if not capacity_fits:
             capacity_fits = bounded_component_capacity_contexts(
@@ -1189,6 +1213,9 @@ class CompactRepairStrategyTracker:
             if overflow_limit is not None:
                 self._capacity_overflow_limit = overflow_limit
             self._capacity_overflow_fact_indexes = _capacity_overflow_fact_indexes(capacity_fits)
+        duplicate_plan_coverage = (
+            category == "plan_coverage" and _has_duplicate_plan_facts(quality_errors)
+        )
         previous_category = self._joint_categories[-1] if self._joint_categories else None
         previous_layout_failure = self._layout_failure_seen
         has_plan_coverage_error = _has_missing_plan_fact_error(quality_errors)
@@ -1222,6 +1249,7 @@ class CompactRepairStrategyTracker:
         joint_inputs_available = compact_plan is not None and task_spec is not None
         joint_recompose = joint_inputs_available and previous_layout_failure and relevant
         joint_recompose = joint_recompose and joint_progress_failed
+        joint_recompose = joint_recompose and not duplicate_plan_coverage
         joint_recompose = joint_recompose and not self._joint_full_recompose_seen
         full_recompose_seen = self._previous_strategy == "plan_guided_recompose"
         full_recompose_seen = full_recompose_seen or (
@@ -1333,6 +1361,7 @@ class CompactRepairStrategyTracker:
                     category_attempt=category_attempt,
                     no_progress=no_progress,
                     force_targeted=True,
+                    duplicate_count_not_reduced=duplicate_count_not_reduced,
                 )
             elif candidate_was_removed:
                 candidate = None
@@ -1416,6 +1445,7 @@ class CompactRepairStrategyTracker:
                     category_attempt=category_attempt,
                     no_progress=no_progress,
                     force_targeted=True,
+                    duplicate_count_not_reduced=duplicate_count_not_reduced,
                 )
             elif self._fallback_submission_count >= COMPACT_COMPONENT_FALLBACK_MAX_ATTEMPTS:
                 candidate = None
@@ -1494,6 +1524,7 @@ class CompactRepairStrategyTracker:
                 category_attempt=category_attempt,
                 no_progress=no_progress,
                 force_targeted=True,
+                duplicate_count_not_reduced=duplicate_count_not_reduced,
             )
         elif joint_recompose:
             directive = _full_dsl_transition_directive(
@@ -1533,6 +1564,7 @@ class CompactRepairStrategyTracker:
                 consecutive_failures=self._consecutive_failures,
                 category_attempt=category_attempt,
                 no_progress=no_progress,
+                duplicate_count_not_reduced=duplicate_count_not_reduced,
             )
         if early_drop_due and directive.repair_strategy == "drop_optional_component":
             if persistent_plan_coverage_followup:
