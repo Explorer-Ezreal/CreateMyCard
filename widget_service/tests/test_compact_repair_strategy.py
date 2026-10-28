@@ -107,6 +107,33 @@ def test_height_overflow_diagnostic_code_enters_layout_capacity_repair() -> None
     assert "重算受影响信息组的完整高度与间距" in directive.instruction
 
 
+def test_long_button_label_repair_only_rewrites_visible_wording() -> None:
+    tracker = CompactRepairStrategyTracker()
+    errors = [
+        {
+            "stage": "validation",
+            "code": "COMPACT_DSL_VALIDATION_FAILED",
+            "message": "PillButton.label must contain at most 5 visible characters.",
+            "compactDiagnostics": [
+                {
+                    "code": "COMPACT_DISPLAY_ACTION_LABEL_TOO_LONG",
+                    "componentId": "action",
+                    "propertyPath": "/label",
+                }
+            ],
+        }
+    ]
+
+    directive = tracker.next_directive("dsl-v1", errors)
+
+    assert directive.repair_strategy == "component_contract_repair"
+    assert directive.scope == "component"
+    assert "label缩短到最多5个字符" in directive.instruction
+    assert "一键导航去公司”改为“导航去公司" in directive.instruction
+    assert "完整保留onClick的call、args、动作目标" in directive.instruction
+    assert "不得复制、删除、改目标或虚构第二个Action" in directive.instruction
+
+
 @pytest.mark.parametrize(
     ("errors", "layout_failure_seen"),
     [
@@ -463,6 +490,61 @@ def test_capacity_recovery_uses_must_fact_as_drop_fallback_after_preserving_core
     assert directive.optional_drop.item_indexes == (2,)
     assert directive.optional_drop.contains_must_facts is True
     assert tracker.allowed_omitted_fact_indexes == (2,)
+
+
+def test_table_text_over_three_items_drops_one_item_per_repair_immediately() -> None:
+    tracker = CompactRepairStrategyTracker(max_repair_attempts=3)
+    plan = {
+        "info_required": [
+            {
+                "requirement": f"状态{index}",
+                "priority": "must",
+                "dataId": f"/data/device/status{index}",
+            }
+            for index in range(6)
+        ]
+    }
+    task_spec = {
+        "size": "2x2",
+        "dataModelSchema": {
+            "data": {
+                "device": {
+                    f"status{index}": {"type": "string"} for index in range(6)
+                }
+            }
+        },
+        "eventCandidates": [],
+    }
+    errors = [_issue("status: TableText.items requires 2 to 3 entries.")]
+
+    def source(item_count: int) -> str:
+        items = ",".join(
+            f'{{"label":"状态{index}",'
+            f'"value":{{"path":"/data/device/status{index}"}}}}'
+            for index in range(item_count)
+        )
+        return (
+            '["root","Column",{},["status"]]\n'
+            f'["status","TableText",{{"items":[{items}]}}]'
+        )
+
+    expected_indexes = (5, 4, 3)
+    directives = []
+    for item_count, expected_index in zip(range(6, 3, -1), expected_indexes, strict=True):
+        directive = tracker.next_directive(
+            source(item_count),
+            errors,
+            compact_plan=plan,
+            task_spec=task_spec,
+        )
+        directives.append(directive)
+        assert directive.repair_strategy == "drop_optional_component"
+        assert directive.optional_drop is not None
+        assert directive.optional_drop.item_indexes == (expected_index,)
+
+    assert tracker.allowed_omitted_fact_indexes == (3, 4, 5)
+    assert "直接进入程序授权的最小 Drop" in directives[0].instruction
+    assert "若删除后仍超过三项" in directives[1].instruction
 
 
 def test_drop_uses_reachable_auxiliary_candidate_and_requires_core_reattach() -> None:
