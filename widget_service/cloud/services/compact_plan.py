@@ -2576,7 +2576,7 @@ def _item_partial_drop_candidate(
     max_fact_count: int | None,
     preserved_fact_indexes: set[int],
 ) -> CompactOptionalDropCandidate | None:
-    """为 SecondaryBody 容量证据或三行 TableText 生成一个最小条目删减候选。"""
+    """为 SecondaryBody 容量证据或至少三行 TableText 生成最小条目删减候选。"""
     secondary_body_candidate = (
         row.component_type == "SecondaryBody" and allowed_fact_indexes is not None
     )
@@ -2586,7 +2586,7 @@ def _item_partial_drop_candidate(
     items = row.props.get("items")
     if not isinstance(items, list):
         return None
-    if table_text_candidate and len(items) != 3:
+    if table_text_candidate and len(items) < 3:
         return None
     candidates: list[CompactOptionalDropCandidate] = []
     for item_index, item in enumerate(items):
@@ -2656,6 +2656,7 @@ def compact_plan_optional_drop_candidate(
     allow_must_fallback: bool = True,
     max_fact_count: int | None = None,
     allowed_fact_indexes: set[int] | None = None,
+    allow_invalid_table_text: bool = False,
 ) -> CompactOptionalDropCandidate | None:
     """优先选 should-only 组件，并按策略和损失上限决定是否允许 must 兜底。"""
     if not plan:
@@ -2678,6 +2679,7 @@ def compact_plan_optional_drop_candidate(
         rows = parse_compact_dsl_rows(
             compact_dsl,
             expand_layouts=False,
+            skip_compact_dsl_validation=allow_invalid_table_text,
             preserve_unreachable=True,
         )
     except (TypeError, ValueError):
@@ -2715,6 +2717,12 @@ def compact_plan_optional_drop_candidate(
             continue
         if row.component_id not in reachable_component_ids:
             continue
+        if allow_invalid_table_text:
+            items = row.props.get("items")
+            if row.component_type != "TableText" or not isinstance(items, list):
+                continue
+            if len(items) <= 3:
+                continue
         if row.component_type in {"Row", "Column", "Stack"}:
             continue
         if row.component_type in _ACTION_FACT_COMPONENTS:

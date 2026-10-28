@@ -80,6 +80,7 @@ _INFO_BLOCK_PROGRESS_VALUE_MARKERS = (
 _SECONDARY_BODY_DYNAMIC_LABEL_MARKERS = ("secondarybody.items[].label only accepts a static value",)
 _SECONDARY_BODY_FONT_SIZE_MARKERS = ("secondarybody.fontsize must be the fixed recipe value",)
 _CAPACITY_REGROUP_CONTRACT_MARKERS = ("is auxiliary and cannot be the only information component",)
+_TABLE_TEXT_ITEM_RANGE_MARKER = "tabletext.items requires 2 to 3 entries"
 _DUPLICATE_PLAN_FACT_PREFIX = "plan fact is displayed more than once in visible dsl:"
 COMPACT_COMPONENT_FALLBACK_MAX_ATTEMPTS = 2
 DROP_OPTIONAL_COMPONENT_MIN_REPAIR_ATTEMPT = 4
@@ -296,6 +297,32 @@ def _capacity_regroup_contract_failure(
     return _contains_marker(messages, _CAPACITY_REGROUP_CONTRACT_MARKERS)
 
 
+def _table_text_item_overflow_failure(
+    compact_dsl: str,
+    quality_errors: list[dict[str, Any]],
+) -> bool:
+    """只把已确认超过三项的 TableText 合同错误视为直接 Drop 信号。"""
+    messages = "\n".join(str(issue.get("message") or "").lower() for issue in quality_errors)
+    if _TABLE_TEXT_ITEM_RANGE_MARKER not in messages:
+        return False
+    try:
+        rows = parse_compact_dsl_rows(
+            compact_dsl,
+            expand_layouts=False,
+            skip_compact_dsl_validation=True,
+            preserve_unreachable=True,
+        )
+    except (CompactDslConversionError, TypeError, ValueError):
+        return False
+    for row in rows:
+        if not isinstance(row, ComponentRow) or row.component_type != "TableText":
+            continue
+        items = row.props.get("items")
+        if isinstance(items, list) and len(items) > 3:
+            return True
+    return False
+
+
 def _capacity_overflow_limit(capacity_fits: list[dict[str, Any]]) -> int | None:
     """返回本轮已证明的最小溢出事实数，用于限制提前 Drop 的损失。"""
     counts: list[int] = []
@@ -438,6 +465,21 @@ def _height_overflow_regions(quality_errors: list[dict[str, Any]]) -> set[str]:
     return regions
 
 
+def _has_quality_error_code(
+    quality_errors: list[dict[str, Any]], expected_code: str
+) -> bool:
+    for issue in quality_errors:
+        if issue.get("code") == expected_code:
+            return True
+        diagnostics = issue.get("compactDiagnostics")
+        if not isinstance(diagnostics, list):
+            continue
+        for diagnostic in diagnostics:
+            if isinstance(diagnostic, dict) and diagnostic.get("code") == expected_code:
+                return True
+    return False
+
+
 def _requires_parent_layout_recompose(
     quality_errors: list[dict[str, Any]],
 ) -> bool:
@@ -459,6 +501,15 @@ def _component_contract_instruction(quality_errors: list[dict[str, Any]]) -> str
         "保留该组件其它合法属性、动态事实、事件和视觉能力，"
         "不得通过删除未报错属性、移除视觉变体或更换为弱语义组件来绕过校验。"
     )
+    if _has_quality_error_code(
+        quality_errors, "COMPACT_DISPLAY_ACTION_LABEL_TOO_LONG"
+    ):
+        return (
+            f"{base_instruction} 只把报错按钮的可见label缩短到最多5个字符，"
+            "使用简洁的“动作+必要目标”文案，例如将“一键导航去公司”改为“导航去公司”；"
+            "完整保留onClick的call、args、动作目标、图标、组件、父布局和唯一Action，"
+            "不得复制、删除、改目标或虚构第二个Action。"
+        )
     secondary_body_count = re.search(
         r"secondarybody\.items requires 1 to 6 entries \(got (\d+)\)",
         messages,
@@ -949,11 +1000,13 @@ def _drop_optional_component_fallback_directive(
             )
         elif candidate.component_type == "TableText":
             instruction = (
-                "已进入 TableText 条目级最小删减兜底。当前三行表格在目标布局中容量失败；"
+                "已进入 TableText 条目级最小删减兜底。当前表格超过三项合同上限，或三行表格"
+                "在目标布局中容量失败；"
                 "仅允许从 optionalDrop.componentId 指定的 TableText.items 删除 "
                 f"allowedItemIndexes={candidate.item_indexes!r} 对应且仍承载 "
-                "allowedOmittedFactIndexes 的一行。保留剩余两行及其顺序、绑定、字号和"
-                "父级引用，不得删除整个 TableText、其它组件、未授权事实或任何 Action。"
+                "allowedOmittedFactIndexes 的一行。若删除后仍超过三项，等待程序下一轮继续"
+                "授权；保留其余行的顺序、绑定、字号和父级引用，不得删除整个 TableText、"
+                "其它组件、未授权事实或任何 Action。"
             )
         else:
             priority = "must" if candidate.contains_must_facts else "should"
@@ -1000,7 +1053,11 @@ def _drop_candidate_is_fully_removed(
     if candidate.partial:
         if candidate.component_type in {"SecondaryBody", "TableText"}:
             try:
-                rows = parse_compact_dsl_rows(compact_dsl, expand_layouts=False)
+                rows = parse_compact_dsl_rows(
+                    compact_dsl,
+                    expand_layouts=False,
+                    skip_compact_dsl_validation=candidate.component_type == "TableText",
+                )
             except (CompactDslConversionError, TypeError, ValueError):
                 return False
             for row in rows:
@@ -1163,6 +1220,7 @@ class CompactRepairStrategyTracker:
         allow_must_fallback: bool = True,
         max_fact_count: int | None = None,
         allowed_fact_indexes: set[int] | None = None,
+        allow_invalid_table_text: bool = False,
     ) -> CompactOptionalDropCandidate | None:
         """从当前仍可见内容中选择下一轮唯一候选并累计省略授权。"""
         candidate = compact_plan_optional_drop_candidate(
@@ -1172,6 +1230,7 @@ class CompactRepairStrategyTracker:
             allow_must_fallback=allow_must_fallback,
             max_fact_count=max_fact_count,
             allowed_fact_indexes=allowed_fact_indexes,
+            allow_invalid_table_text=allow_invalid_table_text,
         )
         if candidate is None:
             return None
@@ -1299,6 +1358,10 @@ class CompactRepairStrategyTracker:
         capacity_regroup_contract_failure = _capacity_regroup_contract_failure(
             quality_errors,
         )
+        table_text_item_overflow = _table_text_item_overflow_failure(
+            invalid_source_dsl,
+            quality_errors,
+        )
         bounded_capacity_followup = (
             self._capacity_pressure_repair_submitted
             and self._repair_submission_count > 0
@@ -1310,7 +1373,8 @@ class CompactRepairStrategyTracker:
         )
         recovery_drop_due = self._capacity_recovery and self._repair_submission_count == 0
         drop_entry_due = (
-            early_drop_due
+            table_text_item_overflow
+            or early_drop_due
             or recovery_drop_due
             or (
                 self._repair_submission_count >= DROP_OPTIONAL_COMPONENT_MIN_REPAIR_ATTEMPT - 1
@@ -1318,12 +1382,18 @@ class CompactRepairStrategyTracker:
             )
         )
         drop_relevant_failure = (
-            is_layout_failure or persistent_plan_coverage_followup or bounded_capacity_followup
+            table_text_item_overflow
+            or is_layout_failure
+            or persistent_plan_coverage_followup
+            or bounded_capacity_followup
         )
         if drop_entry_due and drop_relevant_failure and task_spec is not None:
             max_fact_count = self._capacity_overflow_limit if early_drop_due else None
             allowed_fact_indexes = None
-            if bounded_capacity_followup:
+            recovery_item_drop = recovery_drop_due and bool(
+                self._capacity_overflow_fact_indexes
+            )
+            if bounded_capacity_followup or recovery_item_drop:
                 allowed_fact_indexes = self._capacity_overflow_fact_indexes
             candidate = self._select_drop_candidate(
                 invalid_source_dsl,
@@ -1331,6 +1401,7 @@ class CompactRepairStrategyTracker:
                 task_spec,
                 max_fact_count=max_fact_count,
                 allowed_fact_indexes=allowed_fact_indexes,
+                allow_invalid_table_text=table_text_item_overflow,
             )
             if candidate is not None:
                 self._active_fallback = "drop_optional_component"
@@ -1352,7 +1423,7 @@ class CompactRepairStrategyTracker:
                     self._optional_drop_candidate,
                 )
             )
-            if candidate_was_removed and not is_layout_failure:
+            if candidate_was_removed and not drop_relevant_failure:
                 directive = _non_layout_directive(
                     category=category,
                     quality_errors=quality_errors,
@@ -1374,6 +1445,7 @@ class CompactRepairStrategyTracker:
                         allowed_fact_indexes=(
                             self._capacity_overflow_fact_indexes or None
                         ),
+                        allow_invalid_table_text=table_text_item_overflow,
                     )
                 if candidate is None:
                     directive = _full_dsl_transition_directive(
@@ -1576,6 +1648,15 @@ class CompactRepairStrategyTracker:
                 instruction=(
                     f"{early_drop_instruction}"
                     "不再等待固定第四轮，提前进入程序授权的最小 Drop。"
+                    f"{directive.instruction}"
+                ),
+            )
+        if table_text_item_overflow and directive.repair_strategy == "drop_optional_component":
+            directive = replace(
+                directive,
+                instruction=(
+                    "TableText.items 已超过组件合同允许的三项；"
+                    "不再执行普通组件属性修复，直接进入程序授权的最小 Drop。"
                     f"{directive.instruction}"
                 ),
             )
