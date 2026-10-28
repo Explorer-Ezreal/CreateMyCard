@@ -18,7 +18,7 @@ description: 静态Plan字段、来源引用、索引与提交自查；信息规
 |---|---|---|
 | info_required | 每项requirement、priority和text | 拆分不超过24事实总预算 |
 | text | 最终可读展示版本 | 来源可忠实总结，不必逐字提取或拼接 |
-| sourceTexts | 每项text引用1–3段本轮输入连续原文 | 可追溯证据，不编造引用支持编造摘要 |
+| sourceTexts | 每项text引用1–3段连续原文；有显式静态事实段时只引用该段 | 每条text须有该段内非空引用 |
 | protectedTexts | 用户明确要求逐字保留的片段 | 普通摘要填[]，不机械保护所有名称和数字 |
 | preserveVerbatim | 完整原文要求时true | text完整保留一段引用，不使用省略号 |
 
