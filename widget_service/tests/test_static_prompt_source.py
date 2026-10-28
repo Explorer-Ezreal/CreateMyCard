@@ -1,12 +1,14 @@
 """静态职责、尺寸、阶段与维护元信息的装配回归。"""
 
 import json
+import re
 import shutil
 from pathlib import Path
 
 import pytest
 
 from models.generation import TaskSpec
+from services.compact_dsl_a2ui_converter import convert_compact_dsl_to_a2ui
 from services.compact_prompt_loader import read_static_prompt
 from services.generation_content_policy import STATIC_CONTENT_POLICY, content_policy_scope
 from services.prompt_builder import PromptBuilder
@@ -93,6 +95,20 @@ def test_loaded_examples_match_current_static_contract(size, count):
     assert "RecordList" not in content
     assert "onClick" not in content
     assert "fontSize" not in content
+
+
+def test_small_fewshots_expand_under_current_static_contract():
+    content = (SOURCE / "static_content/fewshots/2x2.md").read_text(encoding="utf-8")
+    for example_id in range(91, 97):
+        match = re.search(
+            rf"## 2x2-V{example_id}\n\n```json\n.*?\n```\n\n```genui\n(.*?)\n```",
+            content,
+            re.S,
+        )
+        assert match is not None
+        with content_policy_scope(STATIC_CONTENT_POLICY):
+            converted = convert_compact_dsl_to_a2ui(match.group(1), size="2x2")
+        assert converted
 
 
 def test_reading_other_stages_does_not_reread_shared_files(source_root, monkeypatch):

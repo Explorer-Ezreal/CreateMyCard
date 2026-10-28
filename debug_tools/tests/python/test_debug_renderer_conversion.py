@@ -5,6 +5,7 @@ import re
 from types import SimpleNamespace
 
 import pytest
+from debug_tools.device_debug.conversion import convert as convert_for_device
 from debug_tools.end_to_end_debug.backend.debug_agent.config import DebugSettings
 from debug_tools.end_to_end_debug.backend.server import create_app
 from debug_tools.static_site import create_frontend_app
@@ -25,6 +26,29 @@ SOURCE = '\n'.join(
         '["/data/phoneBattery/batterySOC",68]',
     )
 )
+
+STATIC_SOURCES = {
+    "TextList": '\n'.join(
+        (
+            '["root","Layout",{"layout":"S-static-content"},["body"]]',
+            '["body","TextList",{"items":[{"primaryText":"带证件","secondaryText":"出发前检查"},'
+            '{"primaryText":"带雨伞","secondaryText":"天气变化时使用"}]}]',
+        )
+    ),
+    "SingleLineList": '\n'.join(
+        (
+            '["root","Layout",{"layout":"S-static-content"},["body"]]',
+            '["body","SingleLineList",{"items":[{"text":"最晚入场","assist":"16:30"},'
+            '{"text":"检票口","assist":"北门"}]}]',
+        )
+    ),
+    "ComparisonGroup": '\n'.join(
+        (
+            '["root","Layout",{"layout":"W-static-content"},["body"]]',
+            '["body","ComparisonGroup",{"items":[{"primaryText":"甲"},{"primaryText":"乙"}]}]',
+        )
+    ),
+}
 
 
 def _expected_themed_conversion(source: str, size: str, app_version: str | None = None) -> str:
@@ -135,6 +159,35 @@ def test_conversion_preserves_explicit_compact_theme(client):
 
     assert response.status_code == 200
     assert response.json().get("genui") == convert_compact_dsl_to_a2ui(source, size="2x2")
+
+
+@pytest.mark.parametrize(
+    "component,size",
+    [("TextList", "2x2"), ("SingleLineList", "2x2"), ("ComparisonGroup", "2x4")],
+)
+def test_static_content_components_are_expanded_for_preview(client, component, size):
+    response = client.post(
+        "/debug/renderer/convert",
+        json={"source": STATIC_SOURCES[component], "size": size},
+    )
+
+    assert response.status_code == 200
+    genui = response.json().get("genui")
+    assert isinstance(genui, str)
+    assert component not in genui
+    assert '"Text"' in genui
+
+
+@pytest.mark.parametrize(
+    "component,size",
+    [("TextList", "2x2"), ("SingleLineList", "2x2"), ("ComparisonGroup", "2x4")],
+)
+def test_static_content_components_are_expanded_for_device(component, size):
+    result = convert_for_device(STATIC_SOURCES[component], input_format="compact", size=size)
+
+    assert result.format == "compact"
+    assert component not in result.text
+    assert any("updateComponents" in message for message in result.messages)
 
 
 def test_single_line_title_svg_without_fill_color_renders(client):

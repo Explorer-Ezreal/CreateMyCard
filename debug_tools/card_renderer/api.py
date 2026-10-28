@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import re
+from contextlib import nullcontext
 from typing import Literal
 
 from debug_tools.paths import ensure_cloud_import_path
@@ -27,6 +29,24 @@ _DATA_ROOT_PATTERN = re.compile(r"/data/([^/}\s\"'+]+)")
 _EXPLICIT_THEME_PROPS = frozenset(
     {"backgroundColor", "backgroundImage", "design", "linearGradient"}
 )
+_STATIC_COMPONENT_TYPES = frozenset({"TextList", "SingleLineList", "ComparisonGroup"})
+
+
+def _uses_static_content_components(source: str) -> bool:
+    """只按 Compact 行的组件类型决定预览转换上下文。"""
+    try:
+        parsed = json.loads(source)
+        rows = parsed if isinstance(parsed, list) else [parsed]
+        if rows and isinstance(rows[0], str):
+            rows = [rows]
+    except json.JSONDecodeError:
+        rows = [json.loads(line) for line in source.splitlines() if line.strip()]
+    for row in rows:
+        if not isinstance(row, list) or len(row) < 2:
+            continue
+        if row[1] in _STATIC_COMPONENT_TYPES:
+            return True
+    return False
 
 
 def _preview_theme_task(source: str, size: str, app_version: str | None) -> dict:
@@ -59,6 +79,7 @@ def register_renderer_conversion_routes(app: FastAPI) -> None:
         convert_compact_dsl_to_a2ui,
         parse_compact_dsl_rows,
     )
+    from services.generation_content_policy import STATIC_CONTENT_POLICY, content_policy_scope
     from services.post_layout_theme import apply_theme
     from services.post_layout_theme_registry import fallback_theme
     from services.theme_selection_policy import default_palette_family
@@ -68,39 +89,45 @@ def register_renderer_conversion_routes(app: FastAPI) -> None:
     def convert_for_preview(request: ConvertRequest) -> ConvertResponse:
         size: Literal["2x2", "2x4"] = "2x2"
         try:
-            rows = parse_compact_dsl_rows(request.source, expand_layouts=False)
-            if request.size == "auto":
-                for row in rows:
-                    if not isinstance(row, ComponentRow):
-                        continue
-                    layout = row.props.get("layout")
-                    if row.component_type == "Layout" and isinstance(layout, str):
-                        size = "2x4" if layout.startswith("W-") else "2x2"
-                        break
-                    width = row.props.get("width")
-                    if isinstance(width, (int, float)) and width >= 240:
-                        size = "2x4"
-                        break
-            else:
-                size = request.size
+            static_scope = (
+                content_policy_scope(STATIC_CONTENT_POLICY)
+                if _uses_static_content_components(request.source)
+                else nullcontext()
+            )
+            with static_scope:
+                rows = parse_compact_dsl_rows(request.source, expand_layouts=False)
+                if request.size == "auto":
+                    for row in rows:
+                        if not isinstance(row, ComponentRow):
+                            continue
+                        layout = row.props.get("layout")
+                        if row.component_type == "Layout" and isinstance(layout, str):
+                            size = "2x4" if layout.startswith("W-") else "2x2"
+                            break
+                        width = row.props.get("width")
+                        if isinstance(width, (int, float)) and width >= 240:
+                            size = "2x4"
+                            break
+                else:
+                    size = request.size
 
-            protocol_profile = {"version": "v0.9", "appVersion": request.appVersion}
-            if _source_declares_theme(rows):
-                genui = convert_compact_dsl_to_a2ui(
-                    request.source,
-                    size=size,
-                    protocol_profile=protocol_profile,
-                )
-            else:
-                task = _preview_theme_task(request.source, size, request.appVersion)
-                with layout_phase(task=task):
+                protocol_profile = {"version": "v0.9", "appVersion": request.appVersion}
+                if _source_declares_theme(rows):
                     genui = convert_compact_dsl_to_a2ui(
                         request.source,
                         size=size,
                         protocol_profile=protocol_profile,
                     )
-                family = default_palette_family(task)
-                genui = apply_theme(genui, fallback_theme(family), task, {})
+                else:
+                    task = _preview_theme_task(request.source, size, request.appVersion)
+                    with layout_phase(task=task):
+                        genui = convert_compact_dsl_to_a2ui(
+                            request.source,
+                            size=size,
+                            protocol_profile=protocol_profile,
+                        )
+                    family = default_palette_family(task)
+                    genui = apply_theme(genui, fallback_theme(family), task, {})
         except (CompactDslConversionError, ValueError) as exc:
             raise HTTPException(status_code=422, detail=str(exc)) from exc
         return ConvertResponse(genui=genui, size=size)
