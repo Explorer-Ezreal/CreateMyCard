@@ -1,6 +1,5 @@
 """静态职责、尺寸、阶段与维护元信息的装配回归。"""
 
-import hashlib
 import json
 import shutil
 from pathlib import Path
@@ -57,7 +56,7 @@ def test_shared_contract_and_stage_boundaries(size):
     create = prompts.get("create")
     assert isinstance(create, str)
     assert "# 信息理解与组织" in create
-    assert "# 组织与选型流程" in create
+    assert "# 内容组织流程" in create
     assert "24事实总预算" not in create
     plan = prompts.get("plan")
     assert isinstance(plan, str)
@@ -65,7 +64,7 @@ def test_shared_contract_and_stage_boundaries(size):
     assert "# 组件" not in plan
     assert "## 变体" not in plan
     assert "完整Compact JSONL" in prompts.get("dsl", "")
-    assert "# 静态内容修复" in prompts.get("repair", "")
+    assert "# 静态修复" in prompts.get("repair", "")
     for prompt in prompts.values():
         assert "description:" not in prompt
         assert "name: static-" not in prompt
@@ -78,24 +77,22 @@ def test_size_specific_components_layouts_and_composition_are_isolated():
     assert "W-static-content" not in small
     assert "宽卡优先" not in small
     assert "S-static-content" in small
-    assert 'variant:"title-action"' in small
-    assert "小卡优先一个重点或两条短记录" in small
+    assert "title-action" not in small
+    assert "小卡采用全宽信息" in small
     assert "ComparisonGroup" in wide
     assert "S-static-content" not in wide
     assert "title-action" not in wide
-    assert "宽卡优先两条带说明记录或三条短记录" in wide
+    assert "宽卡比较可使用2–3栏" in wide
 
 
-@pytest.mark.parametrize(
-    "size,digest",
-    [
-        ("2x2", "30aeaabea14ee9906ef519fb9efd6452c471af69596b9ddf76640e1c1ce7a192"),
-        ("2x4", "1a0592c7390c0fb69a8b69068135a97d96d25541d40ca3581ec24cd5a7a0aa08"),
-    ],
-)
-def test_refactor_preserves_entire_loaded_fewshot_content(size, digest):
+@pytest.mark.parametrize("size,count", [("2x2", 6), ("2x4", 7)])
+def test_loaded_examples_match_current_static_contract(size, count):
     content = read_static_prompt(SOURCE, "fewshot", size)
-    assert hashlib.sha256(content.encode()).hexdigest() == digest
+    assert content.count("```genui") == count
+    assert "ContentBlock" not in content
+    assert "RecordList" not in content
+    assert "onClick" not in content
+    assert "fontSize" not in content
 
 
 def test_reading_other_stages_does_not_reread_shared_files(source_root, monkeypatch):
@@ -194,8 +191,8 @@ def test_complete_capacity_and_shared_rules_are_loaded_once_across_history(monke
         )
     history = "\n".join(message.get("content", "") for message in repaired)
     assert history.count("# 信息理解与组织") == 1
-    assert history.count('"maximumAttributes":6') == 1
+    assert history.count("# 静态容量参考") == 1
     assert history.count("# 静态Plan提交") == 1
     assert history.count("## 2x2-V91") == 1
-    assert "# 静态内容修复" in history
+    assert "# 静态修复" in history
     assert "description: 静态" not in history

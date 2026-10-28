@@ -8,7 +8,7 @@ description: 静态Plan字段、来源引用、索引与提交自查；信息规
 当前agent_stage=plan，仅提交{"name":"submit_card_plan","arguments":{...}}纯JSON文本。
 若用户实际明确要求动态读取或刷新、但本轮未提供必要动态字段，按另行提供的report_missing_data合同
 报告输入缺口；不能编造静态读数或把功能描述冒充展示事实。空绑定本身不是缺口；
-固定文字、已采用静态事实及仅快捷动作仍按正常静态计划处理。
+固定文字和已采用静态事实按本路线处理；Action不属于本静态合同。
 本阶段完成理解、筛选、精简和总结；先构思可放下的字段组合，再提交最终可见文字。
 不提交composition，不新增模型阶段。
 
@@ -16,14 +16,13 @@ description: 静态Plan字段、来源引用、索引与提交自查；信息规
 
 | 字段 | 填写方式 | 使用边界 |
 |---|---|---|
-| info_required | 每项requirement、priority和一个text或actionId | 拆分不超过24事实总预算 |
+| info_required | 每项requirement、priority和text | 拆分不超过24事实总预算 |
 | text | 最终可读展示版本 | 来源可忠实总结，不必逐字提取或拼接 |
 | sourceTexts | 每项text引用1–3段本轮输入连续原文 | 可追溯证据，不编造引用支持编造摘要 |
 | protectedTexts | 用户明确要求逐字保留的片段 | 普通摘要填[]，不机械保护所有名称和数字 |
 | preserveVerbatim | 完整原文要求时true | text完整保留一段引用，不使用省略号 |
-| actionId | 当前批准动作 | Action必须must，不填静态来源字段，不分组 |
 
-正文不得有dataId或绑定，priority沿用信息合同中的核心与独立补充划分。
+事实使用静态text，priority沿用信息合同中的核心与独立补充划分。
 
 ## 对象分组与引用
 
@@ -31,28 +30,27 @@ contentGroups每组{id,kind:"object"|"shared",identity:"对象短名称"|null,fa
 每条text恰好归一组；factIndexes只引用本次info_required，不引用输入材料条目编号或sourceTexts位置。
 合并为两条展示事实后只存在索引0、1；合并或删减事实时同步所有分组及遗漏引用，不沿用来源序号。
 
-object是一条记录、一栏或一个内容块；shared是共同标题、范围、计价口径或说明。
-属性表可一表一组或每行一组；一个object对应一条记录或一行属性，属性表每行单独分组，
+object是一条记录、一栏或一个内容块；shared只放简短主题标题；必要范围、计价口径和说明归正文对象的相应字段。
+单行列表每行一组，文本列表每条记录一组，
 单对象正文则可把关联事实合组。同一事实的字段按展示顺序组织，不能靠其它对象补本对象信息。
-选择records或以RecordList为对象首选组件时，最多提交3个object组；第4个及后续对象不进入
-info_required/contentGroups，应写入omittedContents。先保留用户点名或明确优先的对象，
-没有优先级时保留输入原顺序前3项，不留给DSL修复删除。
+选择records或以TextList为首选时只规划2–3条记录，含共同标题最多2条；更多短项优先SingleLineList。
 对象名称是展示合同的一部分；来源中真实命名的商品、方案、模型、城市或项目须填identity，
-并在本对象内可见，不能仅放在requirement或组ID。未命名对象和shared显式填null；
+并在本对象内可见；单一主体可放在整卡header，多对象须在各自条目内可见。未命名对象和shared显式填null；
 结构序号、条目顺序和临时概括不是主体名称。名称忠于来源，不补造，也计入试排容量。
 
 ## 展示提示
 
 | 字段 | 可选值 / 含义 | 使用边界 |
 |---|---|---|
-| componentHints | 本尺寸静态正文组件 | 动作沿用合法动作组件 |
-| layoutHints | 当前尺寸合法静态布局 | 动作才使用兼容布局 |
-| presentationStyle | auto/content/attributes/records/comparison | 表达信息结构，不是业务场景；比较遵守宽卡组件合同 |
+| componentHints | 本尺寸静态正文组件 | 仅语义组件名 |
+| layoutHints | 当前尺寸唯一静态外框 | 无需选择父布局 |
+| presentationStyle | auto/content/rows/records/comparison | 表达信息结构，不是业务场景；比较遵守宽卡组件合同 |
 | displayRole | title/body/label/value/leading/trailing/detail | 仅text使用，按已有角色层级拆分 |
 | paletteFamily | auto/blue/purple/warm | 用户明确偏好才登记对应色系，默认auto |
 
-对象名称或可识别主体放title，完整结论放body，属性键值用label/value，侧边只放短leading/trailing。
-对比的value是主读数、title是对象名。共享短标题用shared中的title，来源、时间口径和共同条件用shared中的body。
+单一主体或整卡主题用shared/title；实际结论用object/body或value，单行条目用label/value，文本列表的补充用body，短数值可用trailing。
+优先在shared组规划一个简短主题标题，并为其预留空间；标题概括整卡，不重复正文主句。
+对比的value是主读数、title是对象名。列表和对比的名称用object/title；共同条件在正文内承载，不另建辅助组件。
 替代/并列关系和必要限定须在展示文字中保留，不得仅放requirement或组ID。
 
 ## 取舍与容量反馈
