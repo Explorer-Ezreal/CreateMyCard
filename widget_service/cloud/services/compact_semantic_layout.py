@@ -955,6 +955,10 @@ def _compile_static_layout(
         items = body.props.get("items")
         if isinstance(items, list) and len(items) > 2:
             _fail("body", "TextList 含标题区时最多两项；三项请改用单行列表或在Plan重新组织")
+    if "header" in root.children and body.component_type == "ComparisonGroup":
+        items = body.props.get("items")
+        if isinstance(items, list) and len(items) == 4:
+            _fail("body", "ComparisonGroup 四项宫格占满正文区，不能同时使用公共标题")
     spec = contract_section("layout")
     children = []
     content_children = []

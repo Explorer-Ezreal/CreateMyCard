@@ -110,7 +110,7 @@ def _variants(objects: list[_DisplayObject], size: str, presentation: str):
         variants.append(("rows", "SingleLineList", {"items": single_items}))
         if 2 <= len(list_items) <= 3:
             variants.append(("records", "TextList", {"items": list_items}))
-    if size == "2x4" and 2 <= len(objects) <= 3:
+    if size == "2x4" and 2 <= len(objects) <= 4:
         if presentation == "comparison":
             variants.append(("comparison", "ComparisonGroup",
                              {"items": [_comparison(item) for item in objects]}))
@@ -141,6 +141,10 @@ def _encode(
             target.append(fact.get("text", ""))
     if not titles and heading:
         titles.append(heading)
+    items = props.get("items")
+    four_item_comparison = component == "ComparisonGroup" and isinstance(items, list)
+    if four_item_comparison and len(items) == 4 and titles:
+        return None
     if notes:
         if component != "EmphasisText":
             return None

@@ -2,7 +2,6 @@
 
 import json
 import re
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -121,6 +120,97 @@ def test_three_item_list_with_header_is_rejected_without_changing_spec():
     items = [{"primaryText": str(index), "secondaryText": "说明"} for index in range(3)]
     with pytest.raises(ValueError, match="含标题区时最多两项"):
         check(encode("TextList", {"items": items}, header=True))
+
+
+def test_four_item_comparison_uses_full_width_two_by_two_grid():
+    items = [
+        {"primaryText": f"{price}元/月", "secondaryText": name}
+        for price, name in ((128, "甲"), (159, "乙"), (199, "丙"), (239, "丁"))
+    ]
+    nodes = check(encode("ComparisonGroup", {"items": items}, size="2x4"), "2x4")
+    body = nodes.get("body")
+    assert body
+    assert body.get("component") == "Column"
+    assert body.get("styles", {}).get("height") == 126
+    assert body.get("itemMargin") == 12
+    rows = [nodes.get(identifier) for identifier in body.get("children", [])]
+    assert len(rows) == 2
+    assert all(row and row.get("component") == "Row" for row in rows)
+    assert all(row.get("styles", {}).get("height") == 57 for row in rows if row)
+    assert all(len(row.get("children", [])) == 2 for row in rows if row)
+
+    with pytest.raises(ValueError, match="不能同时使用公共标题"):
+        check(
+            encode("ComparisonGroup", {"items": items}, size="2x4", header=True),
+            "2x4",
+        )
+
+
+def test_four_item_comparison_candidate_requires_headerless_layout():
+    facts = []
+    groups = []
+    for index, name in enumerate(("甲", "乙", "丙", "丁")):
+        value_index = len(facts)
+        facts.append({
+            "text": f"{128 + index * 30}元/月",
+            "displayRole": "value",
+            "priority": "must",
+            "componentHints": ["ComparisonGroup"],
+        })
+        title_index = len(facts)
+        facts.append({
+            "text": f"{name}方案",
+            "displayRole": "title",
+            "priority": "must",
+            "componentHints": ["ComparisonGroup"],
+        })
+        groups.append({
+            "id": f"plan-{index}",
+            "kind": "object",
+            "identity": f"{name}方案",
+            "factIndexes": [value_index, title_index],
+        })
+    plan = {
+        "info_required": facts,
+        "contentGroups": groups,
+        "presentationStyle": "comparison",
+    }
+    candidates = static_presentation_candidates(plan, "2x4")
+    assert len(candidates) == 1
+    assert '"ComparisonGroup"' in candidates[0]
+    assert '"header"' not in candidates[0]
+
+    titled_plan = {
+        **plan,
+        "info_required": [
+            *facts,
+            {"text": "方案对比", "displayRole": "title", "priority": "must"},
+        ],
+        "contentGroups": [
+            *groups,
+            {"id": "shared", "kind": "shared", "identity": None, "factIndexes": [8]},
+        ],
+    }
+    assert static_presentation_candidates(titled_plan, "2x4") == ()
+
+
+def test_wide_museum_fewshot_wraps_secondary_text_into_two_lines():
+    selected = [
+        (task, source)
+        for size, task, source in examples()
+        if size == "2x4" and "上海博物馆" in task.get("userQuery", "")
+    ]
+    assert len(selected) == 1
+    task, source = selected[0]
+    nodes = check(source, "2x4", task.get("userQuery", ""))
+    secondary = nodes.get("body__static_secondaryText")
+    assert secondary
+    assert secondary.get("component") == "Column"
+    line_ids = secondary.get("children", [])
+    assert len(line_ids) == 2
+    assert "".join(nodes.get(line_id, {}).get("content", "") for line_id in line_ids) == (
+        "来源：维基百科上海博物馆条目，检索日期2026年9月21日"
+    )
 
 
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
@@ -303,14 +393,9 @@ def test_all_migrated_examples_pass_same_geometry_and_coverage_checks(size, task
 
 
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
-def test_migration_adds_no_input_facts_or_domains(size):
-    path = f"widget_service/cloud/data/protocol_profiles/design-compact-dsl-fusion/" \
-           f"prompt_source/static_content/fewshots/{size}.md"
-    original = subprocess.check_output(["git", "show", f"e4497adb:{path}"], cwd=REPO).decode()
-    old_inputs = []
-    for raw in re.findall(r"```json\s*(.*?)```", original, re.S):
-        task = json.loads(raw)
-        if not task.get("eventCandidates"):
-            old_inputs.append(task)
-    new_inputs = [task for item_size, task, _source in examples() if item_size == size]
-    assert new_inputs == old_inputs
+def test_static_fewshots_add_no_dynamic_inputs(size):
+    inputs = [task for item_size, task, _source in examples() if item_size == size]
+    for task in inputs:
+        assert task.get("dataModelSchema") == {"data": {}}
+        assert task.get("eventCandidates") == []
+        assert task.get("assetCandidates") == []

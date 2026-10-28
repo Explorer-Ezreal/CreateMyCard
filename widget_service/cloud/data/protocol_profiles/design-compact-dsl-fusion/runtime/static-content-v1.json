@@ -95,10 +95,13 @@
     },
     "ComparisonGroup": {
       "minimumItems": 2,
-      "maximumItems": 3,
+      "maximumItems": 4,
       "gap": 8,
       "padding": 8,
       "innerGap": 4,
+      "fourItemGap": 12,
+      "fourItemHeight": 57,
+      "fourItemInnerGap": 3,
       "radius": 12
     }
   },

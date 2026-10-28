@@ -78,7 +78,10 @@ def _validate_contract_fields(payload: dict[str, Any]) -> None:
         "SingleLineList": ("gap", "sideGap"),
         "TextList": ("innerGap", "sideGap", "twoItemGap", "threeItemGap",
                      "dividerWidth", "dividerAlpha"),
-        "ComparisonGroup": ("minimumItems", "maximumItems", "gap", "padding", "innerGap", "radius"),
+        "ComparisonGroup": (
+            "minimumItems", "maximumItems", "gap", "padding", "innerGap",
+            "fourItemGap", "fourItemHeight", "fourItemInnerGap", "radius",
+        ),
     }
     for name, keys in required.items():
         component_fields = payload.get("components", {}).get(name)

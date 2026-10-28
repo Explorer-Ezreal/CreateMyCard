@@ -301,11 +301,15 @@ class _Builder:
         if size != "2x4" or not isinstance(items, list):
             _fail("ComparisonGroup 仅支持 2x4 的静态对象数组。")
         if not number(spec, "minimumItems") <= len(items) <= number(spec, "maximumItems"):
-            _fail("ComparisonGroup 仅支持 2x4 的 2–3 个等权对象。")
-        gap = number(spec, "gap")
+            _fail("ComparisonGroup 仅支持 2x4 的 2–4 个等权对象。")
+        four_item_grid = len(items) == 4
+        gap_name = "fourItemGap" if four_item_grid else "gap"
+        inner_gap_name = "fourItemInnerGap" if four_item_grid else "innerGap"
+        gap = number(spec, gap_name)
         padding = number(spec, "padding")
-        inner_gap = number(spec, "innerGap")
-        column_width = (self.width - gap * (len(items) - 1)) / len(items)
+        inner_gap = number(spec, inner_gap_name)
+        column_count = 2 if four_item_grid else len(items)
+        column_width = (self.width - gap * (column_count - 1)) / column_count
         text_area = column_width - padding * 2
         children: list[str] = []
         heights: list[float] = []
@@ -344,6 +348,14 @@ class _Builder:
                     part_heights.append(height)
             column_id = self.identifier(f"item{index}")
             height = sum(part_heights) + inner_gap * max(0, len(parts) - 1) + padding * 2
+            if four_item_grid:
+                cell_height = number(spec, "fourItemHeight")
+                if height > cell_height:
+                    _fail(
+                        "ComparisonGroup 四项宫格的单格内容超过固定高度；"
+                        "请精简每项文字或减少辅助字段。"
+                    )
+                height = cell_height
             self.column(
                 column_id,
                 parts,
@@ -354,10 +366,37 @@ class _Builder:
                     "layoutWeight": 1,
                     "backgroundColor": self.panel,
                     "borderRadius": number(spec, "radius"),
+                    "justifyContent": "center" if four_item_grid else "start",
                 },
             )
             children.append(column_id)
             heights.append(height)
+        if four_item_grid:
+            row_ids = []
+            row_height = number(spec, "fourItemHeight")
+            for row_index in range(2):
+                row_id = self.identifier(f"row{row_index}")
+                start = row_index * 2
+                self.add(
+                    row_id,
+                    "Row",
+                    {
+                        "width": "matchParent",
+                        "height": row_height,
+                        "itemMargin": gap,
+                        "alignItems": "start",
+                        "flexShrink": 0,
+                    },
+                    children[start:start + 2],
+                )
+                row_ids.append(row_id)
+            self.column(
+                self.component.component_id,
+                row_ids,
+                row_height * 2 + gap,
+                gap,
+            )
+            return
         for row in self.rows:
             if row.component_id in children:
                 row.props["height"] = max(heights)
