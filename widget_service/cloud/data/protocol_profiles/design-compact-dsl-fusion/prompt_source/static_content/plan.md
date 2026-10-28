@@ -34,6 +34,9 @@ object是一条记录、一栏或一个内容块；shared只放简短主题标�
 单行列表每行一组，文本列表每条记录一组，
 单对象正文则可把关联事实合组。同一事实的字段按展示顺序组织，不能靠其它对象补本对象信息。
 选择records或以TextList为首选时只规划2–3条记录，含共同标题最多2条；更多短项优先SingleLineList。
+TextList为2项时必须与SingleLineTitle标题配套使用；3项时允许无标题。
+SingleLineList必须与SingleLineTitle标题配套使用；规划该列表时同时保留可见的shared共同主题。
+ComparisonGroup为2或3项时必须与SingleLineTitle标题配套使用；4项宫格允许无标题。
 对象名称是展示合同的一部分；来源中真实命名的商品、方案、模型、城市或项目须填identity，
 并在本对象内可见；单一主体可放在整卡header，多对象须在各自条目内可见。未命名对象和shared显式填null；
 结构序号、条目顺序和临时概括不是主体名称。名称忠于来源，不补造，也计入试排容量。

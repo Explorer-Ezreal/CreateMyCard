@@ -116,6 +116,47 @@ def test_text_list_derives_separator_spacing_and_typography(count):
     assert (10, 400) in sizes
 
 
+def test_text_list_ellipsizes_main_text_without_covering_optional_value():
+    long_primary = "杭州灵隐寺祈福与知竹素菜馆午餐行程安排"
+    long_secondary = "小河直街、胜利河美食街午餐、拱宸桥沿线游览"
+    items = [
+        {
+            "primaryText": long_primary,
+            "secondaryText": long_secondary,
+            "value": "09:00–11:30",
+        },
+        {"primaryText": long_primary, "secondaryText": long_secondary},
+    ]
+    nodes = check(encode("TextList", {"items": items}, size="2x4"), "2x4")
+    for index in range(2):
+        for field in ("primaryText", "secondaryText"):
+            node = nodes.get(f"body__static_item{index}_{field}")
+            assert node
+            styles = node.get("styles", {})
+            assert styles.get("maxLines") == 1
+            assert styles.get("textOverflow") == "ellipsis"
+            assert styles.get("constraintSize") == {"minWidth": 0}
+            expected = long_primary if field == "primaryText" else long_secondary
+            assert node.get("content") == expected
+        main = nodes.get(f"body__static_item{index}_main")
+        assert main
+        assert main.get("styles", {}).get("layoutWeight") == 1
+        assert main.get("styles", {}).get("constraintSize") == {"minWidth": 0}
+
+    row_with_value = nodes.get("body__static_item0")
+    value = nodes.get("body__static_item0_value")
+    assert row_with_value and value
+    assert row_with_value.get("children") == ["body__static_item0_main", "body__static_item0_value"]
+    assert value.get("content") == "09:00–11:30"
+    assert value.get("styles", {}).get("flexShrink") == 0
+    assert value.get("styles", {}).get("width", 0) > 0
+
+    row_without_value = nodes.get("body__static_item1")
+    assert row_without_value
+    assert row_without_value.get("children") == ["body__static_item1_main"]
+    assert row_without_value.get("styles", {}).get("width") == "matchParent"
+
+
 def test_three_item_list_with_header_is_rejected_without_changing_spec():
     items = [{"primaryText": str(index), "secondaryText": "说明"} for index in range(3)]
     with pytest.raises(ValueError, match="含标题区时最多两项"):
@@ -144,6 +185,51 @@ def test_four_item_comparison_uses_full_width_two_by_two_grid():
             encode("ComparisonGroup", {"items": items}, size="2x4", header=True),
             "2x4",
         )
+
+
+def test_four_item_comparison_ellipsizes_primary_and_secondary_text():
+    long_primary = "159元/月畅享套餐超值版"
+    long_secondary = "乙方案 · 60GB乙方案"
+    items = [
+        {"primaryText": "128元/月", "secondaryText": "甲方案 · 30GB"},
+        {"primaryText": long_primary, "secondaryText": long_secondary},
+        {"primaryText": "199元/月", "secondaryText": "丙方案 · 100GB"},
+        {"primaryText": "239元/月", "secondaryText": "丁方案 · 150GB"},
+    ]
+    nodes = check(encode("ComparisonGroup", {"items": items}, size="2x4"), "2x4")
+    for field, content in (("primaryText", long_primary), ("secondaryText", long_secondary)):
+        node = nodes.get(f"body__static_item1_{field}")
+        assert node
+        assert node.get("content") == content
+        styles = node.get("styles", {})
+        assert styles.get("maxLines") == 1
+        assert styles.get("textOverflow") == "ellipsis"
+        assert styles.get("constraintSize") == {"minWidth": 0}
+        assert styles.get("flexShrink") == 1
+    assert not any("item1_primaryText_line" in identifier for identifier in nodes)
+    assert not any("item1_secondaryText_line" in identifier for identifier in nodes)
+
+
+def test_three_item_comparison_ellipsizes_secondary_text_after_two_lines():
+    secondary_text = "乙方案包含全国通用流量与额外权益说明" * 3
+    items = [
+        {"primaryText": "128元/月", "secondaryText": "甲方案"},
+        {"primaryText": "159元/月", "secondaryText": secondary_text},
+        {"primaryText": "199元/月", "secondaryText": "丙方案"},
+    ]
+    nodes = check(
+        encode("ComparisonGroup", {"items": items}, size="2x4", header=True),
+        "2x4",
+    )
+    secondary = nodes.get("body__static_item1_secondaryText")
+    assert secondary
+    assert secondary.get("component") == "Text"
+    assert secondary.get("content") == secondary_text
+    styles = secondary.get("styles", {})
+    assert styles.get("maxLines") == 2
+    assert styles.get("height") == 32
+    assert styles.get("textOverflow") == "ellipsis"
+    assert styles.get("constraintSize") == {"minWidth": 0}
 
 
 def test_four_item_comparison_candidate_requires_headerless_layout():
@@ -194,7 +280,7 @@ def test_four_item_comparison_candidate_requires_headerless_layout():
     assert static_presentation_candidates(titled_plan, "2x4") == ()
 
 
-def test_wide_museum_fewshot_wraps_secondary_text_into_two_lines():
+def test_wide_museum_fewshot_keeps_secondary_text_with_three_line_limit():
     selected = [
         (task, source)
         for size, task, source in examples()
@@ -205,12 +291,34 @@ def test_wide_museum_fewshot_wraps_secondary_text_into_two_lines():
     nodes = check(source, "2x4", task.get("userQuery", ""))
     secondary = nodes.get("body__static_secondaryText")
     assert secondary
-    assert secondary.get("component") == "Column"
-    line_ids = secondary.get("children", [])
-    assert len(line_ids) == 2
-    assert "".join(nodes.get(line_id, {}).get("content", "") for line_id in line_ids) == (
+    assert secondary.get("component") == "Text"
+    assert secondary.get("content") == (
         "来源：维基百科上海博物馆条目，检索日期2026年9月21日"
     )
+    styles = secondary.get("styles", {})
+    assert styles.get("maxLines") == 3
+    assert styles.get("height") == 32
+    assert styles.get("textOverflow") == "ellipsis"
+
+
+def test_emphasis_secondary_text_ellipsizes_after_three_lines():
+    secondary_text = "这是一段需要展示多条详细说明的辅助文字内容" * 4
+    nodes = check(
+        encode(
+            "EmphasisText",
+            {"mainText": "核心结论", "secondaryText": secondary_text},
+            size="2x2",
+        )
+    )
+    secondary = nodes.get("body__static_secondaryText")
+    assert secondary
+    assert secondary.get("component") == "Text"
+    assert secondary.get("content") == secondary_text
+    styles = secondary.get("styles", {})
+    assert styles.get("maxLines") == 3
+    assert styles.get("height") == 48
+    assert styles.get("textOverflow") == "ellipsis"
+    assert styles.get("constraintSize") == {"minWidth": 0}
 
 
 @pytest.mark.parametrize("size", ["2x2", "2x4"])
@@ -320,6 +428,78 @@ def test_static_capacity_drop_follows_one_unsuccessful_space_repair_and_is_bound
         assert candidate.fact_indexes == (len(facts) - 1,)
         assert not candidate.contains_must_facts
         assert second.approved_omitted_fact_indexes == (len(facts) - 1,)
+
+
+def test_single_line_list_capacity_repair_switches_to_text_list_then_allows_drop():
+    event_names = [f"演唱会{index}" for index in range(5)]
+    items = [
+        {"text": name, "assist": f"{index + 1}月1日 上海体育场"}
+        for index, name in enumerate(event_names)
+    ]
+    source = encode("SingleLineList", {"items": items}, size="2x4", header=True)
+    facts = [
+        {"text": name, "requirement": name, "priority": "must"}
+        for name in event_names
+    ]
+    groups = [
+        {
+            "id": f"event{index}",
+            "kind": "object",
+            "factIndexes": [index],
+        }
+        for index in range(len(facts))
+    ]
+    plan = {
+        "info_required": facts,
+        "contentGroups": groups,
+        "layoutHints": ["W-static-content"],
+    }
+    error = [
+        {
+            "code": "COMPACT_STATIC_TEXT_CAPACITY",
+            "stage": "validation",
+            "message": "COMPACT_STATIC_TEXT_CAPACITY: SingleLineList完整单行文字超限",
+        }
+    ]
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        tracker = CompactRepairStrategyTracker(max_repair_attempts=5, static_content=True)
+        first = tracker.next_directive(
+            source,
+            error,
+            compact_plan=plan,
+            task_spec={"size": "2x4"},
+        )
+        assert first.repair_strategy != "drop_optional_component"
+        assert "改用TextList承载长记录" in first.instruction
+
+        second = tracker.next_directive(
+            source,
+            error,
+            compact_plan=plan,
+            task_spec={"size": "2x4"},
+        )
+        assert second.repair_strategy == "drop_optional_component"
+        candidate = second.optional_drop
+        assert candidate is not None
+        assert candidate.fact_indexes == (len(facts) - 1,)
+        assert second.approved_omitted_fact_indexes == (len(facts) - 1,)
+        repaired = encode(
+            "SingleLineList",
+            {"items": items[:-1]},
+            size="2x4",
+            header=True,
+        )
+        assert not static_group_errors(repaired, plan, candidate.fact_indexes)
+        third = tracker.next_directive(
+            repaired,
+            error,
+            compact_plan=plan,
+            task_spec={"size": "2x4"},
+        )
+        assert third.repair_strategy == "drop_optional_component"
+        assert third.optional_drop is not None
+        assert third.optional_drop.fact_indexes == (len(facts) - 2,)
+        assert third.approved_omitted_fact_indexes == (len(facts) - 2, len(facts) - 1)
 
 
 def test_static_syntax_errors_cannot_authorize_drop():

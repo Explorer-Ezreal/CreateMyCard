@@ -2886,11 +2886,12 @@ def _static_optional_drop_candidate(
             continue
         if not coverage.visible or coverage.component_id is None:
             continue
-        retains_object = any(
-            any(other != index and other in visible_indexes for other in group_indexes)
+        remaining_visible_indexes = visible_indexes - {index}
+        retains_body_object = any(
+            bool(group_indexes.intersection(remaining_visible_indexes))
             for group_indexes in object_groups
         )
-        if not retains_object:
+        if not retains_body_object:
             continue
         text = fact.get("text")
         if not isinstance(text, str):

@@ -11,6 +11,7 @@ from services.card_validation.compact_validation.semantic.layout.text_capacity i
 from services.generation_content_policy import STATIC_COMPONENTS, current_content_policy
 from services.static_text_capacity import (
     component_spec,
+    measure_text,
     number,
     text_spec,
     text_width,
@@ -92,29 +93,54 @@ class _Builder:
         self.rows.append(ComponentRow(identifier, kind, props, tuple(children)))
 
     def text(
-        self, suffix: str, value: Any, width: float, style: str, *, secondary: bool = False
+        self,
+        suffix: str,
+        value: Any,
+        width: float,
+        style: str,
+        *,
+        secondary: bool = False,
+        overflow: str | None = None,
+        max_lines: int | None = None,
     ) -> tuple[str, float]:
         identifier = self.identifier(suffix)
         content = static_string(value, f"{self.component.component_id}.{suffix}")
         spec = self.spec(style)
-        capacity = require_static_text_capacity(
-            content,
-            width,
-            spec,
-            f"{self.component.component_id}.{suffix}",
-        )
+        text_overflow = overflow or spec.get("textOverflow")
+        line_height = number(spec, "lineHeight")
         props = {
             "fontSize": number(spec, "fontSize"),
             "fontWeight": int(number(spec, "fontWeight")),
-            "lineHeight": number(spec, "lineHeight") / number(spec, "fontSize"),
+            "lineHeight": line_height / number(spec, "fontSize"),
             "maxLines": 1,
-            "height": number(spec, "lineHeight"),
+            "height": line_height,
             "width": "matchParent",
             "flexShrink": 0,
             "wordBreak": "normal",
             "fontColor": self.secondary if secondary else self.ink,
             "_visualRecipe": f"static-content-v1:{self.component.component_type}.{suffix}",
         }
+        if text_overflow == "ellipsis":
+            line_limit = max_lines or int(number(spec, "maxLines"))
+            try:
+                visible_lines = min(measure_text(content, width, spec).lines, line_limit)
+            except ValueError:
+                visible_lines = line_limit
+            props.update({
+                "textOverflow": text_overflow,
+                "flexShrink": 1,
+                "constraintSize": {"minWidth": 0},
+                "maxLines": line_limit,
+                "height": line_height * visible_lines,
+            })
+            self.add(identifier, "Text", {**props, "content": content}, [])
+            return identifier, line_height * visible_lines
+        capacity = require_static_text_capacity(
+            content,
+            width,
+            spec,
+            f"{self.component.component_id}.{suffix}",
+        )
         if capacity.lines == 1:
             self.add(identifier, "Text", {**props, "content": content}, [])
         else:
@@ -215,6 +241,8 @@ class _Builder:
                 value_width = text_width(value, number(self.spec("listValue"), "fontSize"))
                 side_gap = number(spec, "sideGap")
             main_width = self.width - value_width - side_gap
+            if main_width <= 0:
+                _fail("TextList.value 占满正文宽度，无法为主副文本保留空间。")
             primary, primary_height = self.text(
                 f"item{index}_primaryText", item.get("primaryText"), main_width, "listPrimary",
             )
@@ -225,7 +253,8 @@ class _Builder:
             main_id = self.identifier(f"item{index}_main")
             main_height = primary_height + inner_gap + secondary_height
             self.column(main_id, [primary, secondary], main_height, inner_gap,
-                        extra={"layoutWeight": 1})
+                        extra={"layoutWeight": 1, "constraintSize": {"minWidth": 0},
+                               "flexShrink": 1})
             row_children = [main_id]
             if "value" in item:
                 value_id, value_height = self.text(
@@ -311,6 +340,7 @@ class _Builder:
         column_count = 2 if four_item_grid else len(items)
         column_width = (self.width - gap * (column_count - 1)) / column_count
         text_area = column_width - padding * 2
+        text_overflow = spec.get("fourItemTextOverflow") if four_item_grid else None
         children: list[str] = []
         heights: list[float] = []
         for index, raw in enumerate(items):
@@ -329,6 +359,8 @@ class _Builder:
                     text_area,
                     style,
                     secondary=key == "secondaryText",
+                    overflow=text_overflow,
+                    max_lines=1 if four_item_grid else None,
                 )
                 parts.append(part_id)
                 part_heights.append(height)

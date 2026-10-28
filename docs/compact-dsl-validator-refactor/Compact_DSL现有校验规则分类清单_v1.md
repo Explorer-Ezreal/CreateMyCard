@@ -1382,3 +1382,32 @@ static_content_components.py的参数展开检查，不向公共入口或动态�
 
 回归由test_static_content_reliability.py覆盖，并执行既有静态、转换器、Plan与生成链路回归。
 不新增Compact诊断码，不修改语义展示、容量阈值或动态合同；未涉及历史待裁决规则。
+
+## 2026-10-28 静态组件单行省略号
+
+| 检查或行为 | 分类、实际文件 | 归属理由 |
+| --- | --- | --- |
+| TextList 主副文字单行省略号与可收缩几何 | 静态展开，`static_content_components.py`；运行合同 `static-content-v1.json` | 展开器保留完整文字，产生单行省略号和最小宽度约束；不由校验器截断内容 |
+| 有值时保留右侧宽度、无值时主文字占满 | 静态展开，`static_content_components.py` | 属于组件内部几何；值区按实际文字宽度固定且不收缩，不猜测端侧卡片尺寸 |
+| 已登记 TextList 省略号的宽度溢出 | 语义／布局与视觉，`semantic/layout/text_width.py` | 只对 `static-content-v1:TextList.` 运行配方降为 warning；不接受模型自行声明省略号来绕过通用宽度门禁 |
+| TextList 省略配置完整性 | 静态运行合同，`static_text_capacity.py` | 校验共享配置必须为主副文字登记 `ellipsis`，避免配置与展开行为漂移 |
+| ComparisonGroup 四项宫格主副文字单行省略 | 静态展开，`static_content_components.py`；运行合同 `static-content-v1.json` | 只在四项 2×2 宫格使用登记的单行省略策略；`details` 不放宽 |
+| ComparisonGroup 两到三项次文字两行省略 | 静态展开，`static_content_components.py`；运行合同 `static-content-v1.json` | `secondaryText` 保留完整原文、最多两行，超出由端侧省略；`primaryText` 仍须通过完整文字容量校验 |
+| 已登记 ComparisonGroup 省略的宽度溢出 | 语义／布局与视觉，`semantic/layout/text_width.py` | 仅运行展开生成带 `static-content-v1:ComparisonGroup.` 配方的省略属性，降为 warning 不改变模型字段合同 |
+| EmphasisText 次文本三行省略 | 静态展开，`static_content_components.py`；运行合同 `static-content-v1.json` | 保留完整原文和实际1–3行高度，超出由端侧在第三行省略；`mainText` 的两行合同不变 |
+| 已登记 EmphasisText 次文本的宽度溢出 | 语义／布局与视觉，`semantic/layout/text_width.py` | 只对 `static-content-v1:EmphasisText.secondaryText` 配方降为 warning，不影响主文本或动态 EmphasisText |
+
+本次不新增诊断码，不改变文字宽度阈值、值区容量、未登记配方或动态组件的错误级别。
+回归位于 `test_static_semantic_components.py`，覆盖 TextList 有值不遮挡、无值占满，ComparisonGroup
+四项宫格的主副文字单行省略、两到三项的次文字两行省略，以及 EmphasisText 次文本的实际行高和三行省略。
+
+## 2026-10-28 静态 SingleLineList 容量修复与受控 Drop
+
+| 检查或行为 | 分类、实际文件 | 归属理由 |
+| --- | --- | --- |
+| SingleLineList 完整单行容量失败 | 语义／布局与视觉，`semantic/layout/text_capacity.py`、`static_content_components.py` | 继续使用既有 `COMPACT_STATIC_TEXT_CAPACITY`，不新增检查或放宽单行合同 |
+| 改用 TextList 的修复指导 | 修复策略，`compact_repair_strategy.py`；提示源 `static_content/repair.md` | 仅在静态容量错误且失败源使用 SingleLineList 时追加；未授权时不允许模型自行删减 |
+| 超出记录逐轮删减 | 计划／Drop 候选，`compact_plan.py` | 保持 should 优先、must 兜底和每轮一事实授权；允许移除只含一条事实的对象，但整卡至少保留一个正文对象 |
+
+修复只在一轮无损容量尝试仍失败后进入既有静态 Drop；保护原文、Action、
+未授权事实和最后一个正文对象仍为阻断边界。

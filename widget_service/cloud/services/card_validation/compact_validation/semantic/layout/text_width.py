@@ -110,6 +110,25 @@ def _collect_text_width_budget_errors(
 
                 required = text_width(text, font)
         if available > 0 and required > available + 1e-7:
+            static_runtime_ellipsis = (
+                props.get("textOverflow") == "ellipsis"
+                and isinstance(marker, str)
+                and marker.startswith(
+                    (
+                        "static-content-v1:TextList.",
+                        "static-content-v1:ComparisonGroup.",
+                        "static-content-v1:EmphasisText.secondaryText",
+                    )
+                )
+            )
+            if static_runtime_ellipsis:
+                if warnings is not None:
+                    warnings.append(
+                        f"component {row.component_id}: static text exceeds its "
+                        f"{available:g}vp single-line text area and will be rendered with "
+                        "an ellipsis."
+                    )
+                continue
             text_block_part = None
             for part in ("TextBlock.label", "TextBlock.value"):
                 if _uses_visual_recipe_part(row, part):

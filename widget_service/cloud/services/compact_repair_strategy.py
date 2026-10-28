@@ -442,6 +442,23 @@ def _table_text_item_overflow_failure(
     return False
 
 
+def _has_component_type(compact_dsl: str, component_type: str) -> bool:
+    """判断失败源中是否存在指定组件；解析失败时不推测。"""
+    try:
+        rows = parse_compact_dsl_rows(
+            compact_dsl,
+            expand_layouts=False,
+            skip_compact_dsl_validation=True,
+            preserve_unreachable=True,
+        )
+    except (CompactDslConversionError, TypeError, ValueError):
+        return False
+    return any(
+        isinstance(row, ComponentRow) and row.component_type == component_type
+        for row in rows
+    )
+
+
 def _capacity_overflow_limit(capacity_fits: list[dict[str, Any]]) -> int | None:
     """返回本轮已证明的最小溢出事实数，用于限制提前 Drop 的损失。"""
     counts: list[int] = []
@@ -1538,6 +1555,11 @@ class CompactRepairStrategyTracker:
         allow_text_compaction = _capacity_text_compaction_relevant(
             invalid_source_dsl,
         )
+        static_single_line_list_overflow = (
+            self._static_content
+            and category == "layout_capacity"
+            and _has_component_type(invalid_source_dsl, "SingleLineList")
+        )
         recovery_drop_due = self._capacity_recovery and self._repair_submission_count == 0
         drop_entry_due = (
             table_text_item_overflow
@@ -1908,6 +1930,14 @@ class CompactRepairStrategyTracker:
                     "对比对象名与主值分开，关键数值、日期时间、单位保持完整片段；"
                     "超宽时改全宽正文或列表；省略号只采用Plan已有展示版本，"
                     "主题放header，强调位置展示结论或读数；完整落实已接受文字，不缩字或隐式裁切。"
+                    + (
+                        "当前SingleLineList的完整单行文字容量不成立；"
+                        "改用TextList承载长记录的主副信息，含标题时最多两项。"
+                        "本轮没有optionalDrop时不得自行删除；若无损转换仍失败，"
+                        "后续只删除optionalDrop明确授权的超出信息。"
+                        if static_single_line_list_overflow
+                        else ""
+                    )
                     + (
                         "同一问题重复出现：必须切换组件形态，优先完整复制计划的staticPresentation；"
                         "若没有已验证候选，按试排容量重新分配主副字段，不能再次返回相同结构。"

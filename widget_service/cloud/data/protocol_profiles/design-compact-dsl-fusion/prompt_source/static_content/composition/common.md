@@ -7,6 +7,8 @@ description: 综合信息与组件选择，不重定义参数、几何或阶段�
 
 1. 按用途形成忠实、独立可理解的展示事实，保留对象、数值、单位和必要限定。
 2. 主题和主体名称先放SingleLineTitle，实际结论或读数用EmphasisText；逐条主副记录用TextList；完整单行键值用SingleLineList。
+   TextList为2项时必须与SingleLineTitle标题配套使用；3项时允许无标题。
+   SingleLineList必须与SingleLineTitle标题配套使用；不能只有body列表而缺少header标题。
    组件之间保持对象归属，不把无关事实硬凑在一起。
 3. 同对象主副字段保持归属；共同主题进入header；必要说明放在所选组件已有字段内。
 4. 按本尺寸固定外框组合；对照完整字段与实际行数核算容量。

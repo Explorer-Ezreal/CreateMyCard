@@ -113,6 +113,35 @@ def test_wide_examples_are_grouped_by_body_component():
     ]
 
 
+def test_single_line_list_guidance_always_requires_title():
+    required = "SingleLineList必须与SingleLineTitle标题配套使用"
+    for stage in ("plan", "create", "repair"):
+        assert required in read_static_prompt(SOURCE, stage, "2x2")
+        assert required in read_static_prompt(SOURCE, stage, "2x4")
+
+
+def test_text_list_guidance_requires_title_for_two_items_only():
+    required = "TextList为2项时必须与SingleLineTitle标题配套使用；3项时允许无标题"
+    for stage in ("plan", "create", "repair"):
+        assert required in read_static_prompt(SOURCE, stage, "2x2")
+        assert required in read_static_prompt(SOURCE, stage, "2x4")
+
+
+def test_comparison_group_guidance_requires_title_for_two_or_three_items():
+    required = (
+        "ComparisonGroup为2或3项时必须与SingleLineTitle标题配套使用；"
+        "4项宫格允许无标题"
+    )
+    for stage in ("plan", "create", "repair"):
+        assert required in read_static_prompt(SOURCE, stage, "2x4")
+
+
+def test_single_line_list_capacity_repair_recommends_text_list_before_drop():
+    repair = read_static_prompt(SOURCE, "repair", "2x4")
+    assert "SingleLineList的text或assist无法完整单行展示时，改用TextList" in repair
+    assert "未收到optionalDrop时保留全部事实" in repair
+
+
 def test_small_fewshots_expand_under_current_static_contract():
     content = (SOURCE / "static_content/fewshots/2x2.md").read_text(encoding="utf-8")
     for example_id in range(91, 97):

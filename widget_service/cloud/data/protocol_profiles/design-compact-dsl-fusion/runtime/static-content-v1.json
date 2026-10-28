@@ -21,20 +21,23 @@
     "emphasisSecondary": {
       "fontSize": 12,
       "lineHeight": 16,
-      "maxLines": 2,
-      "fontWeight": 400
+      "maxLines": 3,
+      "fontWeight": 400,
+      "textOverflow": "ellipsis"
     },
     "listPrimary": {
       "fontSize": 12,
       "lineHeight": 16,
       "maxLines": 1,
-      "fontWeight": 500
+      "fontWeight": 500,
+      "textOverflow": "ellipsis"
     },
     "listSecondary": {
       "fontSize": 10,
       "lineHeight": 13,
       "maxLines": 1,
-      "fontWeight": 400
+      "fontWeight": 400,
+      "textOverflow": "ellipsis"
     },
     "listValue": {
       "fontSize": 12,
@@ -64,7 +67,8 @@
       "fontSize": 12,
       "lineHeight": 16,
       "maxLines": 2,
-      "fontWeight": 400
+      "fontWeight": 400,
+      "textOverflow": "ellipsis"
     },
     "detail": {
       "fontSize": 12,
@@ -102,6 +106,7 @@
       "fourItemGap": 12,
       "fourItemHeight": 57,
       "fourItemInnerGap": 3,
+      "fourItemTextOverflow": "ellipsis",
       "radius": 12
     }
   },

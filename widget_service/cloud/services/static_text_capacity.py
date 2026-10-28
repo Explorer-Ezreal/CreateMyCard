@@ -72,6 +72,21 @@ def _validate_contract_fields(payload: dict[str, Any]) -> None:
                 raise ValueError(f"静态文字规格 {name}.{key} 必须为正数。")
         if not number(text_fields, "maxLines").is_integer():
             raise ValueError(f"静态文字规格 {name}.maxLines 必须为整数。")
+        if name in {"listPrimary", "listSecondary"}:
+            if text_fields.get("textOverflow") != "ellipsis":
+                raise ValueError(f"静态文字规格 {name}.textOverflow 必须为 ellipsis。")
+        if name == "emphasisSecondary":
+            if number(text_fields, "maxLines") != 3:
+                raise ValueError("静态文字规格 emphasisSecondary.maxLines 必须为 3。")
+            if text_fields.get("textOverflow") != "ellipsis":
+                raise ValueError(
+                    "静态文字规格 emphasisSecondary.textOverflow 必须为 ellipsis。"
+                )
+        if name == "comparisonSecondary":
+            if text_fields.get("textOverflow") != "ellipsis":
+                raise ValueError(
+                    "静态文字规格 comparisonSecondary.textOverflow 必须为 ellipsis。"
+                )
     required = {
         "StaticHeader": ("iconSize", "iconGap"),
         "EmphasisText": ("gap",),
@@ -89,6 +104,11 @@ def _validate_contract_fields(payload: dict[str, Any]) -> None:
             raise ValueError(f"静态组件规格缺少 {name}。")
         for key in keys:
             number(component_fields, key)
+        if name == "ComparisonGroup":
+            if component_fields.get("fourItemTextOverflow") != "ellipsis":
+                raise ValueError(
+                    "静态组件规格 ComparisonGroup.fourItemTextOverflow 必须为 ellipsis。"
+                )
     for key in ("padding", "gap", "radius"):
         number(payload.get("layout", {}), key)
     for key in ("asciiEm", "wideAsciiEm", "digitEm", "narrowAsciiEm", "wideEm", "safetyFactor"):
