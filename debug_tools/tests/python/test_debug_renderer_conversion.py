@@ -48,6 +48,13 @@ STATIC_SOURCES = {
             '["body","ComparisonGroup",{"items":[{"primaryText":"甲"},{"primaryText":"乙"}]}]',
         )
     ),
+    "EmphasisText": '\n'.join(
+        (
+            '["root","Layout",{"layout":"S-static-content"},["header","body"]]',
+            '["header","SingleLineTitle",{"title":"出行提醒"}]',
+            '["body","EmphasisText",{"mainText":"记得带伞","secondaryText":"午后有阵雨"}]',
+        )
+    ),
 }
 
 
@@ -163,7 +170,12 @@ def test_conversion_preserves_explicit_compact_theme(client):
 
 @pytest.mark.parametrize(
     "component,size",
-    [("TextList", "2x2"), ("SingleLineList", "2x2"), ("ComparisonGroup", "2x4")],
+    [
+        ("TextList", "2x2"),
+        ("SingleLineList", "2x2"),
+        ("ComparisonGroup", "2x4"),
+        ("EmphasisText", "2x2"),
+    ],
 )
 def test_static_content_components_are_expanded_for_preview(client, component, size):
     response = client.post(
@@ -180,7 +192,12 @@ def test_static_content_components_are_expanded_for_preview(client, component, s
 
 @pytest.mark.parametrize(
     "component,size",
-    [("TextList", "2x2"), ("SingleLineList", "2x2"), ("ComparisonGroup", "2x4")],
+    [
+        ("TextList", "2x2"),
+        ("SingleLineList", "2x2"),
+        ("ComparisonGroup", "2x4"),
+        ("EmphasisText", "2x2"),
+    ],
 )
 def test_static_content_components_are_expanded_for_device(component, size):
     result = convert_for_device(STATIC_SOURCES[component], input_format="compact", size=size)

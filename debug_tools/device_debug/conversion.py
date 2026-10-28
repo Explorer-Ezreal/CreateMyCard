@@ -15,6 +15,18 @@ class Conversion:
     text: str
 
 
+def _is_static_layout_row(row: object) -> bool:
+    if not isinstance(row, list) or len(row) < 3:
+        return False
+    if row[1] != "Layout":
+        return False
+    props = row[2]
+    return isinstance(props, dict) and props.get("layout") in {
+        "S-static-content",
+        "W-static-content",
+    }
+
+
 def convert(source: str, input_format: str = "auto", size: str = "2x2") -> Conversion:
     if not source.strip():
         raise ValueError("请输入 A2UI 或 Compact DSL")
@@ -46,6 +58,12 @@ def convert(source: str, input_format: str = "auto", size: str = "2x2") -> Conve
             and row[1] in {"TextList", "SingleLineList", "ComparisonGroup"}
             for row in rows
         )
+        has_static_layout = any(_is_static_layout_row(row) for row in rows)
+        has_static_emphasis = any(
+            isinstance(row, list) and len(row) >= 2 and row[1] == "EmphasisText"
+            for row in rows
+        )
+        has_static_component = has_static_component or (has_static_layout and has_static_emphasis)
         static_scope = (
             content_policy_scope(STATIC_CONTENT_POLICY) if has_static_component else nullcontext()
         )

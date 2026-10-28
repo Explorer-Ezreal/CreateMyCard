@@ -30,6 +30,8 @@ _EXPLICIT_THEME_PROPS = frozenset(
     {"backgroundColor", "backgroundImage", "design", "linearGradient"}
 )
 _STATIC_COMPONENT_TYPES = frozenset({"TextList", "SingleLineList", "ComparisonGroup"})
+_STATIC_SUPPORT_COMPONENT_TYPES = frozenset({"EmphasisText"})
+_STATIC_LAYOUT_TYPES = frozenset({"S-static-content", "W-static-content"})
 
 
 def _uses_static_content_components(source: str) -> bool:
@@ -41,12 +43,20 @@ def _uses_static_content_components(source: str) -> bool:
             rows = [rows]
     except json.JSONDecodeError:
         rows = [json.loads(line) for line in source.splitlines() if line.strip()]
+    has_static_component = False
+    has_static_layout = False
+    has_static_support_component = False
     for row in rows:
         if not isinstance(row, list) or len(row) < 2:
             continue
         if row[1] in _STATIC_COMPONENT_TYPES:
-            return True
-    return False
+            has_static_component = True
+        if row[1] in _STATIC_SUPPORT_COMPONENT_TYPES:
+            has_static_support_component = True
+        props = row[2] if len(row) >= 3 else None
+        if row[1] == "Layout" and isinstance(props, dict):
+            has_static_layout = props.get("layout") in _STATIC_LAYOUT_TYPES
+    return has_static_component or (has_static_layout and has_static_support_component)
 
 
 def _preview_theme_task(source: str, size: str, app_version: str | None) -> dict:
