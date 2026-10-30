@@ -376,6 +376,12 @@ def test_single_line_list_preserves_units_and_uses_fixed_spacing(size):
     assert not any(node.get("component") == "Divider" for node in nodes.values())
 
 
+def test_single_line_list_rejects_six_body_items():
+    items = [{"text": f"标签{index}", "assist": f"数值{index}"} for index in range(6)]
+    with pytest.raises(ValueError, match="最多五条信息"):
+        check(encode("SingleLineList", {"items": items}))
+
+
 @pytest.mark.parametrize("kind,props", [
     ("ContentBlock", {"body": "内容"}), ("RecordList", {"items": [{"title": "内容"}]}),
     ("TableText", {"items": [{"label": "标签", "value": "值"}]}),
