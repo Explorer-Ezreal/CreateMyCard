@@ -370,7 +370,7 @@ def test_actions_without_trial_support_do_not_consume_capacity_refinement_budget
     ("EmphasisText", {"mainText": "完整内容", "secondaryText": "说明"}, "emphasis"),
     ("EmphasisText", {"mainText": "标题", "secondaryText": "完整内容"}, "emphasisSecondary"),
     ("SingleLineList", {"items": [{"text": "完整内容", "assist": "免费"}]}, "singleText"),
-    ("SingleLineList", {"items": [{"text": "标签", "assist": "完整内容"}]}, "singleAssist"),
+    ("SingleLineList", {"items": [{"text": "标签", "assist": "完整内容"}]}, "singlePanelAssist"),
     ("ComparisonGroup", {"items": [
         {"primaryText": "完整内容"}, {"primaryText": "乙"},
     ]}, "comparisonPrimary"),

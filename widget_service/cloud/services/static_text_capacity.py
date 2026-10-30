@@ -62,7 +62,7 @@ def _validate_contract_fields(payload: dict[str, Any]) -> None:
     for name in (
         "header", "emphasis", "emphasisSecondary", "listPrimary", "listSecondary",
         "listValue", "singleText", "singleAssist", "comparisonPrimary", "comparisonSecondary",
-        "detail",
+        "detail", "singlePanelAssist", "listBadge",
     ):
         text_fields = payload.get("text", {}).get(name)
         if not isinstance(text_fields, dict):
@@ -89,10 +89,13 @@ def _validate_contract_fields(payload: dict[str, Any]) -> None:
                 )
     required = {
         "StaticHeader": ("iconSize", "iconGap"),
-        "EmphasisText": ("gap",),
-        "SingleLineList": ("gap", "sideGap"),
+        "EmphasisText": ("gap", "minimumSupportGap"),
+        "SingleLineList": (
+            "gap", "sideGap", "panelHeight", "panelPadding", "panelRadius", "wideInset",
+        ),
         "TextList": ("innerGap", "sideGap", "twoItemGap", "threeItemGap",
-                     "dividerWidth", "dividerAlpha"),
+                     "dividerWidth", "dividerAlpha", "badgePadding", "badgeGap", "badgeRadius",
+                     "badgeAlpha"),
         "ComparisonGroup": (
             "minimumItems", "maximumItems", "gap", "padding", "innerGap",
             "fourItemGap", "fourItemHeight", "fourItemInnerGap", "radius",
@@ -287,7 +290,8 @@ def static_capacity_prompt(size: str) -> str:
         "- TextList/records：带标题只能2项，无标题只能3项；适合对象名加说明、状态或多个限定。\n"
         "- SingleLineList/rows：必须带标题，正文1–5行；仅适合可完整单行读取的短标签加短值。\n"
         f"- {comparison}\n"
-        "- EmphasisText/content：只承载1个核心对象或结论；主文本最多2行，次文本最多3行。\n"
+        "- EmphasisText/content：只承载1个核心对象或结论；主文本最多2行；"
+        "secondaryText与bottomText各最多3行，但必须共同满足整卡高度。\n"
         "shared/title使用标题区；shared/body虽不计入object组数，仍必须放入所选正文组件的合法字段与高度。"
         "如果实际占用超出上限，首次Plan即先不选should，必要时省略完整低优先级对象并记录omittedContents。"
         "字体、行高及间距由Runtime固定，文字宽度和完整性校验仍作为后续安全兜底。\n"
