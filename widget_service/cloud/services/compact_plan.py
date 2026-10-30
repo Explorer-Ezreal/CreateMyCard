@@ -175,6 +175,7 @@ def build_compact_plan_tool(
     include_composition: bool = False,
     layout_scope: str | None = None,
     allowed_fact_targets: tuple[tuple[str, str], ...] | None = None,
+    static_recovery_facts: tuple[CompactDslRecoveryFact, ...] = (),
 ) -> dict[str, Any]:
     """根据本次 TaskSpec 构造 submit_card_plan 的动态工具合同。"""
     size = task_spec.get("size")
@@ -423,11 +424,14 @@ def build_compact_plan_tool(
     from services.generation_content_policy import current_content_policy
 
     if current_content_policy().is_static:
-        _extend_static_plan_tool(tool, task_spec)
+        _extend_static_plan_tool(tool, task_spec, static_recovery_facts)
     return tool
 
 
-def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None:
+def _extend_static_plan_tool(
+    tool: dict[str, Any], task: dict[str, Any],
+    recovery_facts: tuple[CompactDslRecoveryFact, ...] = (),
+) -> None:
     function = tool.get("function")
     if not isinstance(function, dict):
         raise ValueError("Plan 工具缺少 function。")
@@ -459,8 +463,27 @@ def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None
     fields["preserveVerbatim"] = {"type": "boolean"}
     fields["displayRole"] = {
         "enum": [*_STATIC_DISPLAY_ROLES, *_STATIC_ROLE_ALIASES],
-        "description": "可选展示角色；名称、正文、标签、值和侧栏分别作为事实，不从原句猜字段。",
+        "description": (
+            "可选展示角色；名称、正文、标签、值和侧栏分别作为事实，不从原句猜字段。"
+            "共享正文说明使用body，共同标题使用title。兼容别名secondaryText在shared组"
+            "归一为body，在object组保留原title语义；显式title不改。"
+        ),
     }
+    priority = fields.get("priority")
+    if not isinstance(priority, dict):
+        raise ValueError("Plan 工具缺少事实优先级合同。")
+    priority["description"] = (
+        "must 是本次选入的核心信息及使其独立可理解的主体、条件和范围；"
+        "should 是可省略的入选补充。普通摘要按用途合理选择完整记录，"
+        "不因输入提供了全部记录就全部标 must；未选内容记 omittedContents。"
+        "用户明确要求全部、完整或逐字展示时不得擅自省略。"
+        "计划接受后，不能为 DSL 容量任意把 must 降为 should。"
+    )
+    facts["description"] = (
+        "本次选择的展示清单，不是全部原文清单。保留核心结论、必要主体与共同条件；"
+        "普通摘要可按容量合理未选完整记录，并用 omittedContents 的空 factIndexes 记录。"
+        "明确要求全部、完整或逐字展示的内容除外；未选内容不要放进无归属的事实条目。"
+    )
     fields["text"] = {
         "type": "string",
         "minLength": 1,
@@ -468,6 +491,8 @@ def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None
             "模型按用途与容量总结后的最终展示版本，语义忠于sourceTexts，不要求逐字匹配。"
         ),
     }
+    if recovery_facts:
+        _restrict_static_recovery_facts(facts, item, fields, recovery_facts)
     properties["selectionNotes"] = {
         "type": "array",
         "maxItems": 8,
@@ -475,11 +500,12 @@ def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None
         "description": "规划说明，不作为降级依据；实际删减另填omittedContents。",
     }
     properties["presentationStyle"] = {
-        "enum": ["auto", "content", "attributes", "records", "comparison"],
+        "enum": ["auto", "content", "rows", "records", "comparison"],
         "description": (
             "模型按用户用途选择结构；活动、日程等名称加时地的多条同构记录优先records，"
-            "每个object组对应一条真实记录，不按类别压成ContentBlock长值；"
-            "records最多三个object组；"
+            "每个object组对应一条真实记录，一项保留同一对象的主副信息；"
+            "records实际使用TextList时两到三项，含共同标题最多两项；rows为单行列表；"
+            "上述项数是实际组件承载限制，不是事实账本或contentGroups的数量上限；"
             "comparison仅2x4，普通偏好不替代实际容量校验。"
         ),
     }
@@ -510,9 +536,11 @@ def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None
         "type": "array",
         "maxItems": 24,
         "description": (
-            "每条text归属唯一object或shared组。若presentationStyle为records"
-            "或对象首选RecordList，最多提交三个object组；活动、日程等多记录输入按"
-            "真实记录分组，不按类别合并多条记录；超额内容记入omittedContents。"
+            "这是完整事实账本，每条保留text归属唯一object或shared组；"
+            "申请省略但仍在info_required中的should也必须归组。"
+            "按真实对象分组，不按类别合并不同记录。TextList最多三项的限制针对实际展示，"
+            "不能据此漏掉账本组；先完成归属，再选择可承载的合法组件。"
+            "共享标题引用独立且有来源的标题事实，不借用对象数值的索引。"
         ),
         "items": {
             "type": "object",
@@ -524,8 +552,9 @@ def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None
                 "identity": {
                     "type": ["string", "null"], "minLength": 1, "maxLength": 120,
                     "description": (
-                        "对象的可见短名称，忠于来源；无名称或shared填null。"
-                        "不能只写在内部ID中。"
+                        "对象最终显示的短名称，忠于来源；无名称或shared填null。"
+                        "若本组text已有同对象简称，同步统一名称版本，不能只写在内部ID中。"
+                        "允许独立名称标签加正文；不必把identity重复写入每条text。"
                     ),
                 },
                 "factIndexes": {
@@ -555,6 +584,36 @@ def _extend_static_plan_tool(tool: dict[str, Any], task: dict[str, Any]) -> None
     )
 
 
+def _restrict_static_recovery_facts(
+    facts: dict[str, Any], item: dict[str, Any], fields: dict[str, Any],
+    recovery_facts: tuple[CompactDslRecoveryFact, ...],
+) -> None:
+    """恢复阶段沿用已接受账本，Schema 与最终精确核对使用同一范围。"""
+    variants = []
+    texts = []
+    for fact in recovery_facts:
+        variants.append({
+            "properties": {
+                fact.target: {"const": fact.value},
+                "priority": {"const": fact.priority},
+            },
+            "required": [fact.target, "priority"],
+        })
+        if fact.target == "text" and fact.value not in texts:
+            texts.append(fact.value)
+    fields["text"] = {
+        "type": "string", "enum": texts,
+        "description": "逐条复制 requiredFacts 的完整 text，不摘要、拆分或移入内部说明。",
+    }
+    facts["minItems"] = len(recovery_facts)
+    facts["maxItems"] = len(recovery_facts)
+    facts["description"] = (
+        "逐项保留 requiredFacts 的 text 及其对应 priority；仅重新选择分组和展示组件。"
+        "不得重加 excludedFacts，不能以同值重复条目替代其它事实。"
+    )
+    item["allOf"] = [{"anyOf": variants}]
+
+
 @dataclass(frozen=True)
 class _StaticPlanNormalization:
     facts: list[dict[str, Any]]
@@ -579,6 +638,32 @@ class _StaticOmissionDeclarations:
 class _StaticGroupNormalization:
     membership: dict[int, str]
     groups: list[dict[str, Any]]
+
+
+def _static_omission_references_are_known(
+    indexes: list[Any], raw_facts: list[Any], index_map: dict[int, int],
+    accepted_facts: list[dict[str, Any]],
+) -> bool:
+    """拒绝授权后仍检查整条引用，不能把尾部未知内容当作已计划事实。"""
+    if not indexes:
+        return False
+    seen: set[int] = set()
+    for index in indexes:
+        if type(index) is not int or not 0 <= index < len(raw_facts):
+            return False
+        if index in seen:
+            return False
+        seen.add(index)
+        original = raw_facts[index]
+        if not isinstance(original, dict) or not isinstance(original.get("text"), str):
+            return False
+        mapped = index_map.get(index)
+        if type(mapped) is not int or not 0 <= mapped < len(accepted_facts):
+            return False
+        accepted = accepted_facts[mapped]
+        if not isinstance(accepted, dict) or not isinstance(accepted.get("text"), str):
+            return False
+    return True
 
 
 def _normalize_static_omissions(
@@ -611,6 +696,7 @@ def _normalize_static_omissions(
         selected = []
         seen: set[int] = set()
         invalid_reason = None
+        authorization_denied = False
         for index in indexes:
             if type(index) is not int or not 0 <= index < len(raw_facts):
                 invalid_reason = "事实索引越界或类型错误"
@@ -624,6 +710,7 @@ def _normalize_static_omissions(
             protected = original.get("protectedTexts") or original.get("preserveVerbatim")
             if original.get("priority") != "should" or protected:
                 invalid_reason = "引用了 must 或受保护事实"
+                authorization_denied = True
                 break
             mapped = index_map.get(index)
             if mapped is None:
@@ -635,14 +722,22 @@ def _normalize_static_omissions(
             )
             if accepted_fact.get("priority") != "should" or merged_protected:
                 invalid_reason = "去重后指向 must 或受保护事实"
+                authorization_denied = True
                 break
             if mapped not in selected:
                 selected.append(mapped)
         if invalid_reason is not None:
-            descriptions.append(description)
+            known_references = authorization_denied and _static_omission_references_are_known(
+                indexes, raw_facts, index_map, accepted_facts,
+            )
+            if known_references:
+                consequence = "已撤销删除授权；实际遗漏由最终覆盖核对。"
+            else:
+                descriptions.append(description)
+                consequence = "已撤销删除授权并按未选入的 query 内容记录。"
             warnings.append(
                 f"omittedContents「{description}」的 factIndexes {invalid_reason}，"
-                "已撤销删除授权并按未选入的 query 内容记录。"
+                f"{consequence}"
             )
             continue
         if selected:
@@ -779,12 +874,80 @@ def _collect_static_source_errors(
         errors.append("info_required: 静态来源引用数量超过预算。")
 
 
-def _static_fact_source(user_query: str) -> tuple[str, bool]:
+def static_fact_source(user_query: str) -> tuple[str, bool]:
     """提取显式附加的静态事实段，避免把用户期望误作已获事实。"""
     _, marker, fact_source = user_query.partition(_STATIC_FACT_SECTION_MARKER)
     if not marker:
         return user_query, False
     return fact_source.strip(), True
+
+
+def _static_presentation_consistency_errors(
+    facts: list[dict[str, Any]],
+    groups: list[dict[str, Any]],
+    presentation_style: str,
+    *,
+    presentation: str | None = None,
+    size: str | None = None,
+) -> list[str]:
+    """拒绝模型已显式指定的正文组件与展示风格相互冲突的 Plan。"""
+    expected_components = {
+        "records": "TextList",
+        "rows": "SingleLineList",
+        "comparison": "ComparisonGroup",
+    }
+    expected = expected_components.get(presentation_style)
+    if expected is None:
+        return []
+    body_components = set(expected_components.values())
+    object_count = sum(group.get("kind") == "object" for group in groups)
+    errors = []
+    if presentation_style == "records" and object_count == 3:
+        for group in groups:
+            if group.get("kind") != "shared":
+                continue
+            for index in group.get("factIndexes", []):
+                fact = facts[index]
+                title_is_protected = bool(
+                    fact.get("protectedTexts") or fact.get("preserveVerbatim")
+                )
+                title_is_required = fact.get("priority") != "should" or title_is_protected
+                is_required_title = (
+                    fact.get("displayRole") == "title"
+                    and title_is_required
+                )
+                if is_required_title:
+                    from services.card_validation.compact_validation.semantic.layout import (
+                        text_capacity,
+                    )
+
+                    candidate_plan = {
+                        "info_required": facts, "contentGroups": groups,
+                        "staticPresentation": presentation,
+                    }
+                    if text_capacity.static_plan_candidate_preserves_required_content(
+                        candidate_plan, size,
+                    ):
+                        continue
+                    return [
+                        "三条 records/TextList 优先不设共同标题：将可省略主题改为 should，"
+                        "或把必要主题归入首条对象后再提交；不能减少核心记录。"
+                    ]
+    for group in groups:
+        if group.get("kind") != "object":
+            continue
+        for index in group.get("factIndexes", []):
+            hints = facts[index].get("componentHints", [])
+            if not isinstance(hints, list):
+                continue
+            selected = next((hint for hint in hints if hint in body_components), None)
+            if selected is not None and selected != expected:
+                errors.append(
+                    "presentationStyle 与 componentHints 冲突："
+                    f"{presentation_style} 需要 {expected}，但对象事实首选 {selected}。"
+                )
+                return errors
+    return errors
 
 
 def _normalize_static_plan(
@@ -795,7 +958,7 @@ def _normalize_static_plan(
     user_query = task.get("userQuery")
     if not isinstance(user_query, str):
         raise CompactPlanValidationError(["静态来源需求必须是字符串。"])
-    source_query, has_explicit_fact_source = _static_fact_source(user_query)
+    source_query, has_explicit_fact_source = static_fact_source(user_query)
     if not isinstance(raw_facts, list) or not 1 <= len(raw_facts) <= 24:
         raise CompactPlanValidationError(["静态计划必须包含 1–24 条事实或动作。"])
     warnings: list[str] = []
@@ -852,6 +1015,9 @@ def _normalize_static_plan(
     old_to_new: dict[int, int] = {}
     identities: dict[tuple[str, str, str, str | None], int] = {}
     extras = {"sourceTexts", "protectedTexts", "preserveVerbatim", "displayRole"}
+    shared_group_ids = {
+        group.get("id") for group in raw_groups if group.get("kind") == "shared"
+    }
     for old_index, raw_fact in enumerate(raw_facts):
         if not isinstance(raw_fact, dict) or set(raw_fact) - (_FACT_KEYS | extras):
             raise CompactPlanValidationError(["静态事实包含非法结构或未知字段。"])
@@ -861,7 +1027,7 @@ def _normalize_static_plan(
         if isinstance(hints, list):
             if any(hint not in _component_hints(task.get("size")) for hint in hints):
                 raise CompactPlanValidationError(
-                    ["静态计划仅允许三类新正文及必要标题、说明和动作组件。"]
+                    ["静态计划仅允许文本列表、单行列表、强调文本、宽卡对比及标题。"]
                 )
         basic = dict(raw_fact)
         for key in extras:
@@ -872,7 +1038,13 @@ def _normalize_static_plan(
             if "displayRole" in raw_fact:
                 if not isinstance(display_role, str):
                     raise CompactPlanValidationError(["静态 displayRole 必须为已登记角色。"])
-                display_role = _STATIC_ROLE_ALIASES.get(display_role, display_role)
+                if (
+                    display_role == "secondaryText"
+                    and membership.get(old_index) in shared_group_ids
+                ):
+                    display_role = "body"
+                else:
+                    display_role = _STATIC_ROLE_ALIASES.get(display_role, display_role)
                 if display_role not in _STATIC_DISPLAY_ROLES:
                     raise CompactPlanValidationError(["静态 displayRole 不在已登记角色中。"])
         elif old_index in membership or extras.intersection(raw_fact):
@@ -945,6 +1117,15 @@ def _normalize_static_plan(
     )
     facts = selection.facts
     groups = selection.groups
+    consistency_errors = _static_presentation_consistency_errors(
+        facts,
+        groups,
+        arguments.get("presentationStyle", "auto"),
+        presentation=selection.presentation,
+        size=task.get("size"),
+    )
+    if consistency_errors:
+        raise CompactPlanValidationError(consistency_errors)
 
     try:
         StaticContentContext.from_plan(source_query, {"info_required": facts})
@@ -1459,7 +1640,7 @@ def parse_compact_plan_call(
                             "不能只把名称写在requirement或组ID中。"
                         ])
         for preference, choices in (
-            ("presentationStyle", {"auto", "content", "attributes", "records", "comparison"}),
+            ("presentationStyle", {"auto", "content", "rows", "records", "comparison"}),
             ("paletteFamily", {"auto", "blue", "purple", "warm"}),
         ):
             selected = arguments.get(preference, "auto")
@@ -1990,6 +2171,7 @@ class _CompactVisibleState:
     literals: tuple[str, ...]
     item_literals: tuple[str, ...]
     handlers: tuple[dict[str, Any], ...]
+    value_unit_literals: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -2022,7 +2204,9 @@ def _compact_visible_state(components: list[ComponentRow]) -> _CompactVisibleSta
     path_occurrences: list[_CompactVisiblePathOccurrence] = []
     visible_literals: list[str] = []
     item_literals: list[str] = []
+    value_unit_literals: list[str] = []
     handlers: list[dict[str, Any]] = []
+    reachable_ids = _reachable_component_ids(tuple(components))
     for component in components:
         from services.generation_content_policy import current_content_policy
 
@@ -2048,7 +2232,13 @@ def _compact_visible_state(components: list[ComponentRow]) -> _CompactVisibleSta
         if has_separate_progress_readout:
             visible_props.pop("value", None)
         _collect_paths_and_literals(visible_props, visible_paths, visible_literals)
-        _collect_structured_item_literals(component, item_literals)
+        _collect_structured_item_literals(
+            component,
+            item_literals,
+            value_unit_literals=(
+                value_unit_literals if component.component_id in reachable_ids else None
+            ),
+        )
         for property_name, value in visible_props.items():
             _collect_visible_path_occurrences(
                 value,
@@ -2066,6 +2256,7 @@ def _compact_visible_state(components: list[ComponentRow]) -> _CompactVisibleSta
         literals=tuple(_normalize_text(value) for value in visible_literals),
         item_literals=tuple(_normalize_text(value) for value in item_literals),
         handlers=tuple(handlers),
+        value_unit_literals=tuple(_normalize_text(value) for value in value_unit_literals),
     )
 
 
@@ -2130,8 +2321,14 @@ def compact_plan_overflow_action_ids(
 def _collect_structured_item_literals(
     component: ComponentRow,
     literals: list[str],
+    *,
+    value_unit_literals: list[str] | None = None,
 ) -> None:
     """补充同一结构化条目内共同呈现的静态文本。"""
+    if component.component_type == "EmphasizedData":
+        if value_unit_literals is not None:
+            _collect_emphasized_data_value_unit_literals(component, value_unit_literals)
+        return
     items = component.props.get("items")
     if not isinstance(items, list):
         return
@@ -2150,6 +2347,28 @@ def _collect_structured_item_literals(
         if _BINDING_PATH.search(label) or _BINDING_PATH.search(value):
             continue
         literals.append(f"{label}{value}")
+
+
+def _collect_emphasized_data_value_unit_literals(
+    component: ComponentRow,
+    literals: list[str],
+) -> None:
+    """只合并同一主读数的合法静态值与单位，供完整文字精确比较。"""
+    value = component.props.get("value")
+    unit = component.props.get("unit")
+    if not isinstance(unit, str) or not unit.strip():
+        return
+    if "${" in unit or "{{" in unit:
+        return
+    valid_number = isinstance(value, (int, float)) and not isinstance(value, bool)
+    if isinstance(value, float) and not math.isfinite(value):
+        return
+    if not valid_number:
+        if not isinstance(value, str) or not value.strip():
+            return
+        if "${" in value or "{{" in value:
+            return
+    literals.append(f"{value}{unit}")
 
 
 def _collect_event_card_item_literals(
@@ -2224,7 +2443,9 @@ def _compact_fact_coverage_result(
     if isinstance(text, str):
         expected_text = _normalize_text(text)
         literal_candidates = (*state.literals, *state.item_literals)
-        if not expected_text or not any(expected_text in actual for actual in literal_candidates):
+        literal_match = any(expected_text in actual for actual in literal_candidates)
+        value_unit_match = expected_text in state.value_unit_literals
+        if not expected_text or not (literal_match or value_unit_match):
             return CompactPlanCoverageResult(
                 errors=(f"Plan static text is not fully visible in DSL: {label}.",),
                 warnings=(),
@@ -2400,43 +2621,73 @@ def _recovery_fact(fact: dict[str, Any]) -> CompactDslRecoveryFact | None:
     return None
 
 
+def _static_recovery_omitted_indexes(
+    compact_dsl: str,
+    plan: dict[str, Any],
+    allowed_indexes: tuple[int, ...],
+) -> set[int]:
+    from services.card_validation.compact_validation.semantic.static_content import (
+        static_fact_coverage,
+    )
+
+    facts = plan.get("info_required", [])
+    omitted = set()
+    for coverage in static_fact_coverage(compact_dsl, plan, allowed_indexes):
+        fact = facts[coverage.fact_index]
+        if coverage.visible or coverage.text_present or "actionId" in fact:
+            continue
+        if fact.get("protectedTexts") or fact.get("preserveVerbatim"):
+            continue
+        optional = fact.get("priority") == "should"
+        if optional or coverage.fact_index in allowed_indexes:
+            omitted.add(coverage.fact_index)
+    return omitted
+
+
 def compact_plan_recovery_facts(
     compact_dsl: str,
     plan: dict[str, Any] | None,
     task_spec: dict[str, Any],
+    *,
+    allowed_omitted_fact_indexes: tuple[int, ...] = (),
 ) -> tuple[tuple[CompactDslRecoveryFact, ...], tuple[CompactDslRecoveryFact, ...]]:
-    """按第一轮最后一次失败 DSL 的可见结果划分第二轮 Plan 事实。"""
+    """划分恢复事实；静态链路不能把失败源的未授权遗漏固化为取舍。"""
     if not plan:
         return (), ()
     facts = plan.get("info_required")
     if not isinstance(facts, list):
         return (), ()
-    non_action_indexes = tuple(
-        index
-        for index, fact in enumerate(facts)
-        if isinstance(fact, dict) and "actionId" not in fact
-    )
-    omitted = compact_plan_omitted_facts(
-        compact_dsl,
-        plan,
-        task_spec,
-        non_action_indexes,
-    )
+    from services.generation_content_policy import current_content_policy
+
+    is_static = current_content_policy().is_static
+    omitted_indexes: set[int] = set()
     omitted_targets = set()
-    for fact in omitted:
-        recovery_fact = _recovery_fact(fact)
-        if recovery_fact is not None:
-            omitted_targets.add((recovery_fact.target, recovery_fact.value))
+    if is_static:
+        omitted_indexes = _static_recovery_omitted_indexes(
+            compact_dsl, plan, allowed_omitted_fact_indexes,
+        )
+    else:
+        non_action_indexes = []
+        for index, fact in enumerate(facts):
+            if isinstance(fact, dict) and "actionId" not in fact:
+                non_action_indexes.append(index)
+        omitted = compact_plan_omitted_facts(
+            compact_dsl, plan, task_spec, tuple(non_action_indexes),
+        )
+        for fact in omitted:
+            recovery_fact = _recovery_fact(fact)
+            if recovery_fact is not None:
+                omitted_targets.add((recovery_fact.target, recovery_fact.value))
     retained_facts: list[CompactDslRecoveryFact] = []
     omitted_facts: list[CompactDslRecoveryFact] = []
-    for fact in facts:
+    for index, fact in enumerate(facts):
         if not isinstance(fact, dict):
             continue
         recovery_fact = _recovery_fact(fact)
         if recovery_fact is None:
             continue
         target = (recovery_fact.target, recovery_fact.value)
-        should_omit = target in omitted_targets
+        should_omit = index in omitted_indexes if is_static else target in omitted_targets
         if recovery_fact.target != "actionId" and should_omit:
             omitted_facts.append(recovery_fact)
         else:
@@ -2709,6 +2960,7 @@ def compact_plan_optional_drop_candidate(
     max_fact_count: int | None = None,
     allowed_fact_indexes: set[int] | None = None,
     allow_invalid_table_text: bool = False,
+    approved_omitted_fact_indexes: tuple[int, ...] = (),
 ) -> CompactOptionalDropCandidate | None:
     """优先选 should-only 组件，并按策略和损失上限决定是否允许 must 兜底。"""
     if not plan:
@@ -2726,6 +2978,7 @@ def compact_plan_optional_drop_candidate(
             plan,
             allowed_fact_indexes,
             allow_must_fallback=allow_must_fallback,
+            approved_indexes=approved_omitted_fact_indexes,
         )
     try:
         rows = parse_compact_dsl_rows(
@@ -2869,6 +3122,7 @@ def _static_optional_drop_candidate(
     allowed_indexes: set[int] | None,
     *,
     allow_must_fallback: bool,
+    approved_indexes: tuple[int, ...] = (),
 ) -> CompactOptionalDropCandidate | None:
     """静态删减按事实授权；优先 should，无候选时才允许 must 兜底。"""
     from services.card_validation.compact_validation.semantic.static_content import (
@@ -2879,12 +3133,13 @@ def _static_optional_drop_candidate(
     if not isinstance(facts, list):
         return None
     try:
-        coverage_rows = static_fact_coverage(source, plan)
+        coverage_rows = static_fact_coverage(source, plan, approved_indexes)
     except (TypeError, ValueError):
         return None
     visible_indexes = {
         coverage.fact_index for coverage in coverage_rows if coverage.visible
     }
+    visible_indexes.difference_update(approved_indexes)
     object_groups = []
     for group in plan.get("contentGroups", []):
         if group.get("kind") != "object":
@@ -2900,6 +3155,8 @@ def _static_optional_drop_candidate(
     must_candidates = []
     for coverage in coverage_rows:
         index = coverage.fact_index
+        if index in approved_indexes:
+            continue
         if allowed_indexes is not None and index not in allowed_indexes:
             continue
         fact = facts[index]
@@ -2908,11 +3165,12 @@ def _static_optional_drop_candidate(
             continue
         if not coverage.visible or coverage.component_id is None:
             continue
-        retains_object = any(
-            any(other != index and other in visible_indexes for other in group_indexes)
+        remaining_visible_indexes = visible_indexes - {index}
+        retains_body_object = any(
+            bool(group_indexes.intersection(remaining_visible_indexes))
             for group_indexes in object_groups
         )
-        if not retains_object:
+        if not retains_body_object:
             continue
         text = fact.get("text")
         if not isinstance(text, str):
@@ -2938,7 +3196,19 @@ def _static_optional_drop_candidate(
         candidates = must_candidates
     if not candidates:
         return None
-    return max(candidates, key=lambda candidate: candidate.fact_indexes)
+    shared_title_indexes = set()
+    for group in plan.get("contentGroups", []):
+        if group.get("kind") != "shared":
+            continue
+        for index in group.get("factIndexes", []):
+            if facts[index].get("displayRole") == "title":
+                shared_title_indexes.add(index)
+    return max(
+        candidates,
+        key=lambda candidate: (
+            not shared_title_indexes.intersection(candidate.fact_indexes), candidate.fact_indexes,
+        ),
+    )
 
 
 def _required_anchor_layout(

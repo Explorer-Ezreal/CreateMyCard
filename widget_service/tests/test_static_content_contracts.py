@@ -122,6 +122,96 @@ def test_no_eligible_candidate_still_returns_capacity_feedback_without_deleting_
     assert plan == before
 
 
+def test_plan_rejects_conflicting_record_component_and_row_style():
+    plan = {
+        "info_required": [
+            fact("中海寰宇时代", displayRole="title", componentHints=["TextList"]),
+            fact("58600元/㎡，环比下跌1.2%", displayRole="body", componentHints=["TextList"]),
+        ],
+        "contentGroups": [{
+            "id": "community",
+            "kind": "object",
+            "identity": "中海寰宇时代",
+            "factIndexes": [0, 1],
+        }],
+        "presentationStyle": "rows",
+    }
+    task = {"userQuery": "中海寰宇时代58600元/㎡，环比下跌1.2%", "size": "2x4"}
+    raw = json.dumps({"name": "submit_card_plan", "arguments": plan}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        with pytest.raises(
+            CompactPlanValidationError,
+            match="presentationStyle 与 componentHints 冲突",
+        ):
+            parse_compact_plan_call(raw, task)
+
+
+@pytest.mark.parametrize("candidate_available", [True, False])
+def test_three_records_title_requires_a_valid_alternative_candidate(
+    monkeypatch, candidate_available,
+):
+    from dataclasses import replace
+
+    from services import static_content_planning
+
+    original_select = static_content_planning.select_static_plan_content
+
+    def select_without_candidate(*args, **kwargs):
+        return replace(original_select(*args, **kwargs), presentation=None)
+
+    if not candidate_available:
+        monkeypatch.setattr(
+            static_content_planning, "select_static_plan_content", select_without_candidate,
+        )
+    facts = [fact("附近小区房价", displayRole="title")]
+    groups = [{"id": "theme", "kind": "shared", "identity": None, "factIndexes": [0]}]
+    communities = (
+        ("中海寰宇时代", "58600元/㎡"),
+        ("天通苑北一区", "41200元/㎡"),
+        ("融泽嘉园", "46800元/㎡"),
+    )
+    for name, value in communities:
+        title_index = len(facts)
+        facts.append(fact(name, displayRole="title", componentHints=["TextList"]))
+        value_index = len(facts)
+        facts.append(fact(value, displayRole="value", componentHints=["TextList"]))
+        groups.append({
+            "id": name,
+            "kind": "object",
+            "identity": name,
+            "factIndexes": [title_index, value_index],
+        })
+    plan = {
+        "info_required": facts,
+        "contentGroups": groups,
+        "presentationStyle": "records",
+    }
+    task = {
+        "userQuery": (
+            "附近小区房价：中海寰宇时代58600元/㎡；天通苑北一区41200元/㎡；"
+            "融泽嘉园46800元/㎡"
+        ),
+        "size": "2x4",
+    }
+    raw = json.dumps({"name": "submit_card_plan", "arguments": plan}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        if not candidate_available:
+            with pytest.raises(
+                CompactPlanValidationError,
+                match="三条 records/TextList 优先不设共同标题",
+            ):
+                parse_compact_plan_call(raw, task)
+        else:
+            accepted = parse_compact_plan_call(raw, task).plan
+            source = accepted.get("staticPresentation")
+            assert isinstance(source, str)
+            assert '"SingleLineTitle"' in source
+            assert '"SingleLineList"' in source
+            assert "附近小区房价" in source
+            assert accepted.get("info_required") == facts
+            assert accepted.get("contentGroups") == groups
+
+
 def test_dynamic_plan_tool_has_no_static_identity_roles_or_capacity_feedback():
     task = {"size": "2x4", "userQuery": "动态数据", "dataModelSchema": {"data": {}}}
     with content_policy_scope(EXISTING_CONTENT_POLICY):
@@ -131,7 +221,7 @@ def test_dynamic_plan_tool_has_no_static_identity_roles_or_capacity_feedback():
         assert static_key not in encoded
 
 
-def test_inline_identity_candidate_keeps_names_without_extra_label_lines():
+def test_single_line_identity_candidate_keeps_names_and_complete_values():
     from services.static_content_presentation import static_presentation_candidates
 
     plan = {
@@ -140,7 +230,7 @@ def test_inline_identity_candidate_keeps_names_without_extra_label_lines():
             {"id": "a", "kind": "object", "identity": "方案甲", "factIndexes": [0]},
             {"id": "b", "kind": "object", "identity": "方案乙", "factIndexes": [1]},
         ],
-        "presentationStyle": "attributes",
+        "presentationStyle": "rows",
     }
     with content_policy_scope(STATIC_CONTENT_POLICY):
         candidates = static_presentation_candidates(plan, "2x4")
@@ -148,7 +238,10 @@ def test_inline_identity_candidate_keeps_names_without_extra_label_lines():
     for candidate in candidates:
         rows = [json.loads(line) for line in candidate.splitlines()]
         body = next(row for row in rows if row[0] == "body")
-        if body[2].get("attributes") == [{"value": "方案甲：30GB"}, {"value": "方案乙：60GB"}]:
+        if body[1] == "SingleLineList" and body[2].get("items") == [
+            {"text": "方案甲", "assist": "30GB"},
+            {"text": "方案乙", "assist": "60GB"},
+        ]:
             inline.append(candidate)
     assert inline
     with content_policy_scope(STATIC_CONTENT_POLICY):
@@ -164,35 +257,46 @@ def test_actions_without_trial_support_do_not_consume_capacity_refinement_budget
     assert not trial.errors
 
 
-@pytest.mark.parametrize("font", [12, 11, 10, 12.0, 11.0, 10.0])
-def test_registered_body_font_preserves_title_and_primary_hierarchy(font):
+@pytest.mark.parametrize("component,props,role", [
+    ("EmphasisText", {"mainText": "完整内容", "secondaryText": "说明"}, "emphasis"),
+    ("EmphasisText", {"mainText": "标题", "secondaryText": "完整内容"}, "emphasisSecondary"),
+    ("SingleLineList", {"items": [{"text": "完整内容", "assist": "免费"}]}, "singleText"),
+    ("SingleLineList", {"items": [{"text": "标签", "assist": "完整内容"}]}, "singleAssist"),
+    ("ComparisonGroup", {"items": [
+        {"primaryText": "完整内容"}, {"primaryText": "乙"},
+    ]}, "comparisonPrimary"),
+    ("ComparisonGroup", {"items": [
+        {"primaryText": "甲", "secondaryText": "完整内容"}, {"primaryText": "乙"},
+    ]}, "comparisonSecondary"),
+])
+def test_registered_semantic_font_preserves_role_hierarchy(component, props, role):
     from services.compact_dsl_a2ui_converter import convert_compact_dsl_to_a2ui
     from services.static_content_context import standard_components
+    from services.static_text_capacity import text_spec
 
-    dsl = source("ContentBlock", {"title": "可见标题", "body": "完整内容", "fontSize": font})
+    dsl = source(component, props)
     with content_policy_scope(STATIC_CONTENT_POLICY):
         converted = convert_compact_dsl_to_a2ui(dsl, size="2x4")
     nodes = standard_components(converted)
-    title = nodes.get("body__static_title")
-    body = nodes.get("body__static_body")
-    assert title and body
-    assert title.get("styles", {}).get("fontSize") == 16
-    assert body.get("styles", {}).get("fontSize") == font
+    body = next(node for node in nodes.values() if node.get("content") == "完整内容")
+    expected = text_spec(role)
+    assert body.get("styles", {}).get("fontSize") == expected.get("fontSize")
+    assert body.get("styles", {}).get("fontWeight") == expected.get("fontWeight")
     assert body.get("content") == "完整内容"
 
 
 @pytest.mark.parametrize("font", [9, 8, 0, 10.5, 13, True, None, "11"])
-def test_static_font_rejects_values_below_floor_or_outside_registered_steps(font):
+def test_static_font_rejects_model_geometry_overrides(font):
     from services.compact_dsl_a2ui_converter import convert_compact_dsl_to_a2ui
     from services.compact_high_level_components import CompactDslConversionError
 
-    dsl = source("ContentBlock", {"body": "完整内容", "fontSize": font})
+    dsl = source("EmphasisText", {"mainText": "完整内容", "fontSize": font})
     with content_policy_scope(STATIC_CONTENT_POLICY):
-        with pytest.raises(CompactDslConversionError, match="最小为10"):
+        with pytest.raises(CompactDslConversionError, match="只允许字段"):
             convert_compact_dsl_to_a2ui(dsl, size="2x4")
 
 
-def test_candidates_try_smaller_complete_content_before_optional_omission():
+def test_candidates_try_complete_content_before_optional_omission_without_font_override():
     from services.static_content_presentation import static_presentation_candidates
 
     plan = {
@@ -202,21 +306,25 @@ def test_candidates_try_smaller_complete_content_before_optional_omission():
     candidates = static_presentation_candidates(plan, "2x2")
     last_complete = -1
     first_omitted = len(candidates)
-    sizes = []
+    complete = []
     for index, candidate in enumerate(candidates):
         rows = [json.loads(line) for line in candidate.splitlines()]
         body = next(row for row in rows if row[0] == "body")
         if "补充内容" in candidate:
             last_complete = index
-            sizes.append(body[2].get("fontSize", 12))
+            complete.append(candidate)
         else:
             first_omitted = min(first_omitted, index)
+        assert "fontSize" not in body[2]
     assert last_complete < first_omitted
-    assert sizes == sorted(sizes, reverse=True)
-    assert set(sizes) == {12, 11, 10}
+    assert complete
+    assert first_omitted < len(candidates)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        for candidate in complete:
+            assert not static_group_errors(candidate, plan)
 
 
-def test_complex_core_content_remains_rejected_at_minimum_font_without_mutation():
+def test_complex_core_content_remains_rejected_without_mutation_or_font_override():
     from services.static_content_presentation import static_presentation_candidates
 
     facts = []
@@ -234,10 +342,7 @@ def test_complex_core_content_remains_rejected_at_minimum_font_without_mutation(
     assert trial.source is None
     assert trial.errors
     assert plan == before
-    sizes = []
-    for candidate in candidates:
-        rows = [json.loads(line) for line in candidate.splitlines()]
-        body = next(row for row in rows if row[0] == "body")
-        sizes.append(body[2].get("fontSize", 12))
-    assert sizes and min(sizes) == 10
-    assert set(sizes) == {12, 11, 10}
+    assert candidates == ()
+    assert trial.attempted == 0
+    assert "有限候选" in trial.errors[0]
+    assert "不代表所有合法排版均不可行" in trial.errors[0]

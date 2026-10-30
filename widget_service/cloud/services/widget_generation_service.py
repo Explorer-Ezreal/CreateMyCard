@@ -56,6 +56,7 @@ from services.compact_plan import (
     compact_plan_recovery_facts,
     compact_recovery_plan_errors,
     parse_compact_plan_call,
+    static_fact_source,
 )
 from services.compact_repair_strategy import (
     CompactRepairStrategyTracker,
@@ -101,7 +102,7 @@ from services.protocol_registry import (
     A2UIProtocolRegistry,
     ProtocolProfileSelection,
 )
-from services.response_planner import ResponsePlanner
+from services.response_planner import ResponsePlanner, merge_static_recovery_omissions
 from services.retry_controller import RetryController
 from services.single_step_edit import EDIT_FORMAT, SingleStepEditProcessor, source_digest
 from services.single_step_processor import SingleStepFallbackProcessor
@@ -110,6 +111,11 @@ from services.source_artifact_repository import (
     SourceArtifactError,
     SourceArtifactLoadResult,
     SourceArtifactRepository,
+)
+from services.static_plan_review import (
+    StaticPlanReviewError,
+    parse_static_plan_review,
+    static_review_lost_must_indexes,
 )
 from services.template_generation import TemplateSourceGenerator
 from services.validator import ArtifactValidator
@@ -1016,6 +1022,10 @@ class WidgetGenerationService:
             max_plan_attempts = 2
             refinement_plan: CompactPlanValidationResult | None = None
             refinement_source: str | None = None
+            review_plan: CompactPlanValidationResult | None = None
+            review_source: str | None = None
+            review_conversation: list[dict[str, str]] | None = None
+            review_mode = "not_applicable"
             for attempt in range(1, max_plan_attempts + 1):
                 trace_increment_attempt("planContractAttempts")
                 with (
@@ -1052,11 +1062,55 @@ class WidgetGenerationService:
                     static_contract_options = (
                         {"require_static_omission_refs": True} if content_policy.is_static else {}
                     )
-                    try:
-                        input_report = parse_missing_data_report(
-                            raw_plan, request.userQuery,
-                            allow_report=generation_mode == "create",
+                    review_keep = False
+                    review_fallback = False
+                    if review_plan is not None:
+                        fact_source, _explicit_source = static_fact_source(request.userQuery)
+                        try:
+                            review = parse_static_plan_review(
+                                raw_plan, source=fact_source,
+                                fact_count=len(review_plan.plan.get("info_required", [])),
+                            )
+                        except StaticPlanReviewError as exc:
+                            plan_span.outcome("failed", reason="invalid_static_review")
+                            trace_record(
+                                "static_content.plan.review.completed", stage="plan",
+                                status="failed", details={"error": str(exc)},
+                                text_artifacts={"static_plan_review_output": raw_plan},
+                            )
+                            raise A2UIModelGenerationError(str(exc)) from exc
+                        review_mode = review.decision
+                        trace_record(
+                            "static_content.plan.review.completed", stage="plan",
+                            status="success",
+                            details={
+                                "decision": review.decision,
+                                "sourceFidelity": review.source_fidelity,
+                                "warnings": list(review.warnings),
+                            },
+                            text_artifacts={"static_plan_review_output": raw_plan},
+                            json_artifacts={"static_plan_review_findings": list(review.findings)},
                         )
+                        review_keep = review.decision == "keep"
+                        review_fallback = (
+                            review.source_fidelity == "preserved" and not review.findings
+                        )
+                        if review_keep:
+                            if review_source is None:
+                                raise RuntimeError("Static review lost its original Plan source")
+                            validation = review_plan
+                            raw_plan = review_source
+                        else:
+                            if review.corrected_source is None:
+                                raise RuntimeError("Static review lost its corrected Plan source")
+                            raw_plan = review.corrected_source
+                    try:
+                        input_report = None
+                        if not review_keep:
+                            input_report = parse_missing_data_report(
+                                raw_plan, request.userQuery,
+                                allow_report=generation_mode == "create",
+                            )
                         if input_report is not None:
                             plan_span.outcome("failed", reason="generationInputIncomplete")
                             trace_record(
@@ -1069,17 +1123,18 @@ class WidgetGenerationService:
                                 f"requirement_count={len(input_report.requirements)}"
                             )
                             raise MissingDataInputError(input_report)
-                        validation = parse_compact_plan_call(
-                            raw_plan,
-                            task_spec.model_dump(mode="json", exclude_none=True),
-                            static_text_source=previous_design_token,
-                            require_static_identity=content_policy.is_static,
-                            require_composition=(
-                                settings.enable_design_compact_runtime_prompt_context
-                                and not content_policy.is_static
-                            ),
-                            **static_contract_options,
-                        )
+                        if not review_keep:
+                            validation = parse_compact_plan_call(
+                                raw_plan,
+                                task_spec.model_dump(mode="json", exclude_none=True),
+                                static_text_source=previous_design_token,
+                                require_static_identity=content_policy.is_static,
+                                require_composition=(
+                                    settings.enable_design_compact_runtime_prompt_context
+                                    and not content_policy.is_static
+                                ),
+                                **static_contract_options,
+                            )
                         if capacity_recovery and compact_retry_context is not None:
                             recovery_errors = compact_recovery_plan_errors(
                                 validation.plan,
@@ -1109,7 +1164,22 @@ class WidgetGenerationService:
                                 "plan_validation_errors": "diagnostic",
                             },
                         )
-                        if not will_retry and refinement_plan is not None:
+                        if review_fallback and review_plan is not None:
+                            validation = review_plan
+                            if review_source is not None:
+                                raw_plan = review_source
+                            trace_record(
+                                "static_content.plan.review.fallback", stage="plan",
+                                status="success",
+                                details={
+                                    "reason": "原计划语义已确认，修正版合同失败，保留结构合法"
+                                    "原计划继续DSL排版；有限试排无候选不代表容量已通过",
+                                    "hasFeasibleCandidate": bool(
+                                        review_plan.plan.get("staticPresentation")
+                                    ),
+                                },
+                            )
+                        elif not will_retry and refinement_plan is not None:
                             validation = refinement_plan
                             trace_record(
                                 "static_content.plan.refinement.fallback",
@@ -1123,10 +1193,13 @@ class WidgetGenerationService:
                                 "Compact Info Plan did not satisfy the plan contract"
                             ) from exc
                         else:
+                            if content_policy.is_static and not capacity_recovery:
+                                review_mode = "combined_contract_repair"
                             trace_increment_retry("planContractRetries")
                             repair_prompt_started_at = time.perf_counter()
                             plan_prompt = PromptBuilder.build_compact_plan_repair(
                                 plan_prompt, raw_plan, exc.errors,
+                                retry_context=compact_retry_context,
                             )
                             trace_step(
                                 "plan.prompt.built", stage="plan.promptBuild", status="success",
@@ -1135,6 +1208,38 @@ class WidgetGenerationService:
                                 json_artifacts={"plan_repair_prompt": plan_prompt},
                             )
                             continue
+                    if review_fallback and review_plan is not None:
+                        lost_indexes = static_review_lost_must_indexes(
+                            review_plan.plan, validation.plan,
+                        )
+                        if lost_indexes:
+                            validation = review_plan
+                            if review_source is not None:
+                                raw_plan = review_source
+                            logger.warning(
+                                f"{_MODULE} static_review_preserved_fact_loss "
+                                f"fact_indexes={json_for_log(lost_indexes)} "
+                                "action=keep_original_plan"
+                            )
+                            trace_record(
+                                "static_content.plan.review.fallback", stage="plan",
+                                status="success", details={
+                                    "reason": "容量改排缺少原must展示文字，保留已确认原计划",
+                                    "factIndexes": list(lost_indexes),
+                                },
+                            )
+                        previous_candidate = review_plan.plan.get("staticPresentation")
+                        if previous_candidate and not validation.plan.get("staticPresentation"):
+                            validation = review_plan
+                            if review_source is not None:
+                                raw_plan = review_source
+                            trace_record(
+                                "static_content.plan.review.fallback", stage="plan",
+                                status="success",
+                                details={
+                                    "reason": "原计划语义已确认，容量优化无可行候选，保留原候选",
+                                },
+                            )
                     if refinement_plan is not None:
                         previous_candidate = refinement_plan.plan.get("staticPresentation")
                         if previous_candidate and not validation.plan.get("staticPresentation"):
@@ -1147,12 +1252,30 @@ class WidgetGenerationService:
                                 details={"reason": "新计划未找到可行候选，保留此前合法候选与计划"},
                             )
                     if content_policy.is_static and attempt < max_plan_attempts:
+                        if not capacity_recovery:
+                            review_plan = validation
+                            review_source = raw_plan
+                            review_conversation = copy.deepcopy(plan_prompt)
+                            plan_prompt = PromptBuilder.build_static_plan_review(
+                                plan_prompt, validation.plan, request.userQuery,
+                                original_submission=raw_plan,
+                            )
+                            trace_increment_retry("planSemanticReviews")
+                            trace_record(
+                                "static_content.plan.review", stage="plan", status="scheduled",
+                                details={"attempt": attempt, "remainingAttempts": 1},
+                                json_artifacts={
+                                    "static_plan_review_candidate": validation.plan,
+                                    "static_plan_review_prompt": plan_prompt,
+                                },
+                            )
+                            continue
                         feedback = validation.plan.get("staticPresentationFeedback")
                         if feedback:
                             refinement_plan = validation
                             refinement_source = raw_plan
                             plan_prompt = PromptBuilder.build_static_plan_refinement(
-                                plan_prompt, feedback,
+                                plan_prompt, feedback, retry_context=compact_retry_context,
                             )
                             trace_increment_retry("planCapacityRefinements")
                             trace_record(
@@ -1161,6 +1284,9 @@ class WidgetGenerationService:
                                 json_artifacts={"capacity_reference": feedback},
                             )
                             continue
+                    if review_conversation is not None:
+                        plan_prompt = copy.deepcopy(review_conversation)
+                        plan_prompt[-1] = {"role": "assistant", "content": raw_plan}
                     trace_step(
                         "plan.validation.completed",
                         stage="plan.parseValidate",
@@ -1207,6 +1333,7 @@ class WidgetGenerationService:
                                 "sourceReferenceCount": len(evidence.source_positions),
                                 "protectedCount": evidence.protected_count,
                                 "groupCount": len(validation.plan.get("contentGroups", [])),
+                                "semanticReview": review_mode,
                             },
                             json_artifacts={
                                 "static_source_evidence": {
@@ -1402,6 +1529,14 @@ class WidgetGenerationService:
             # 模型修复阶段切换回模型组件规则。
             source_generated_by_template = False
             trace_phase("repair")
+            prepared_source = latest_processing_result.repair_source_dsl
+            if content_policy.is_static and prepared_source is not None:
+                logger.info(
+                    f"{_MODULE} repair_source_selected origin=static_shared_header "
+                    f"quality_repair_attempt={quality_repair_attempt_count + 1} "
+                    f"quality_error_count={len(latest_processing_result.errors)}"
+                )
+                invalid_source_dsl = prepared_source
             quality_error_payloads = [
                 asset_mapper.restore_diagnostic_values(item.to_prompt_payload())
                 for item in latest_processing_result.errors
@@ -2064,6 +2199,11 @@ class WidgetGenerationService:
                             latest_processing_result.source_dsl,
                             accepted_compact_plan,
                             task_spec.model_dump(mode="json", exclude_none=True),
+                            allowed_omitted_fact_indexes=(
+                                compact_repair_tracker.allowed_omitted_fact_indexes
+                                if compact_repair_tracker is not None
+                                else ()
+                            ),
                         )
                         if not content_policy.is_static:
                             recovery_plan = build_compact_recovery_plan(
@@ -2076,6 +2216,10 @@ class WidgetGenerationService:
                         retained_facts=retained_facts,
                         omitted_facts=omitted_facts,
                         recovery_plan=recovery_plan,
+                        omission_plan=(
+                            copy.deepcopy(accepted_compact_plan)
+                            if content_policy.is_static else None
+                        ),
                     )
             latency_by_stage["total"] = self._elapsed_ms(generation_started_at)
             self._log_generation_summary(
@@ -2242,6 +2386,11 @@ class WidgetGenerationService:
         omitted_requirements = [
             str(fact.get("requirement") or "") for fact in omitted_facts if fact.get("requirement")
         ]
+        omitted_requirements = merge_static_recovery_omissions(
+            omitted_requirements,
+            latest_processing_result.source_dsl,
+            compact_retry_context,
+        )
         if omitted_requirements:
             trace_record(
                 "response.plan_facts_omitted",

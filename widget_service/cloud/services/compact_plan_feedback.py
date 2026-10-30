@@ -16,7 +16,8 @@ _TEXT_PREVIEW_CHARS = 120
 _REPAIR_INSTRUCTION = (
     "以下账本只描述这次失败提交，索引均来自本次info_required；不是新Plan或删除授权。"
     "下一次原子同步info_required、contentGroups及omittedContents：保留的每条text恰好归属一组，"
-    "Action不分组、不省略；合并或调整事实后重算全部索引。"
+    "Action不参与文本分组，准入仍由当前请求合同裁决；引用恢复不授权不支持的Action。"
+    "合并或调整事实后重算全部索引。"
     "空factIndexes的遗漏说明只记录未选输入，不能解除仍在info_required中的事实归属义务；"
     "不得仅删contentGroups或写一条遗漏说明就宣称事实已移除。"
     "计划内遗漏引用仅可指向无保护should，must、保护原文及用户要求完整的内容不得借此删除。"
@@ -285,6 +286,33 @@ def _group_entries(rows: Any) -> list[dict[str, Any]]:
     return entries
 
 
+def _required_group_repairs(
+    facts: list[Any], groups: dict[int, list[str]],
+) -> list[dict[str, Any]]:
+    """将已有关系诊断聚焦到受影响事实，不替模型选择其所有者。"""
+    repairs = []
+    for index, fact in enumerate(facts):
+        if not isinstance(fact, dict) or _is_effective_action(fact):
+            continue
+        text = fact.get("text")
+        if not isinstance(text, str):
+            continue
+        references = groups.get(index, [])
+        if len(references) == 1:
+            continue
+        operation = "assign_one_group" if not references else "resolve_group_conflict"
+        repairs.append({
+            "index": index, "text": _preview(text), "priority": _preview(fact.get("priority")),
+            "currentReferences": references, "operation": operation,
+            "instruction": (
+                "为本条事实明确且仅保留一个正确归属；保留在info_required的候选should也需归组。"
+                "公共标题应引用独立且有来源的标题事实，不能借用对象的数值或时长索引。"
+                "不要删除必选事实或仅改omittedContents来消除归组错误；不要猜造新内容。"
+            ),
+        })
+    return repairs
+
+
 def static_plan_repair_feedback(raw_output: str) -> dict[str, Any] | None:
     """仅为关系不闭合的失败提交构造有界账本，不改输入或判定计划通过。"""
     if len(raw_output) > _MAX_RAW_CHARS:
@@ -318,6 +346,7 @@ def static_plan_repair_feedback(raw_output: str) -> dict[str, Any] | None:
     status = "inconsistent_submitted_references" if issues else "submitted_references_recovered"
     return {
         "status": status, "factCount": len(facts),
+        "requiredGroupRepairs": _required_group_repairs(facts, groups),
         "facts": ledger, "groupDeclarations": _group_entries(arguments.get("contentGroups")),
         "omissionDeclarations": _omission_entries(omissions, recoveries),
         "issues": issues, "recoveries": recoveries, "instruction": _REPAIR_INSTRUCTION,

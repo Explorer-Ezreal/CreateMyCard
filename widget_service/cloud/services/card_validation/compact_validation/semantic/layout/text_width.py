@@ -99,8 +99,12 @@ def _collect_text_width_budget_errors(
         maximum = _non_negative_number(props.get("maxWidth"))
         if maximum is not None:
             available = min(available, maximum)
-        # 只反馈明显冲突，不把字符压力估计作为精确字体测量门禁。
-        required = sum(font * (0.5 if ch.isascii() else 1.0) for ch in text)
+        # 普通文字保持原保守估算；仅固定强调主文字复用规划压力，不冒充端侧测量。
+        required = sum(font * (0.5 if character.isascii() else 1) for character in text)
+        if _uses_visual_recipe_part(row, "EmphasisText.main"):
+            from services.compact_composition_planner import _text_width
+
+            required = _text_width(text, font)
         from services.generation_content_policy import current_content_policy
 
         marker = props.get("_visualRecipe")
@@ -110,6 +114,25 @@ def _collect_text_width_budget_errors(
 
                 required = text_width(text, font)
         if available > 0 and required > available + 1e-7:
+            static_runtime_ellipsis = (
+                props.get("textOverflow") == "ellipsis"
+                and isinstance(marker, str)
+                and marker.startswith(
+                    (
+                        "static-content-v1:TextList.",
+                        "static-content-v1:ComparisonGroup.",
+                        "static-content-v1:EmphasisText.secondaryText",
+                    )
+                )
+            )
+            if static_runtime_ellipsis:
+                if warnings is not None:
+                    warnings.append(
+                        f"component {row.component_id}: static text exceeds its "
+                        f"{available:g}vp single-line text area and will be rendered with "
+                        "an ellipsis."
+                    )
+                continue
             text_block_part = None
             for part in ("TextBlock.label", "TextBlock.value"):
                 if _uses_visual_recipe_part(row, part):
