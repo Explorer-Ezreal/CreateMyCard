@@ -19,21 +19,17 @@ UX_LAYOUT_COMPONENT_IDS = frozenset(
         "WideSingleFocusLayout",
         "WideFullOnlyLayout",
         "WideTwoFullLayout",
-        "WideHeroCompactLayout",
         "WideFullHeroActionLayout",
         "WideHeroActionFullLayout",
         "WideFullTwoCompactLayout",
         "WideFourCompactLayout",
-        "WideFullHeroTwoActionLayout",
         "WideTwoHeroActionLayout",
         "WideFullFourActionLayout",
         "WideTwoHalfLayout",
         "WideHalfTwoCompactLayout",
         "WideHalfCompactTwoLargeActionLayout",
         "WideHalfFourLargeActionLayout",
-        "WideTwoFocusLayout",
         "WideTwoFocusActionLayout",
-        "WideTwoFocusTwoActionLayout",
     }
 )
 UX_DIRECT_BUSINESS_COMPONENT_IDS = frozenset(

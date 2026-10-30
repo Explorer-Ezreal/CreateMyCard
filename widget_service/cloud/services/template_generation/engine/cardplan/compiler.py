@@ -985,20 +985,16 @@ def _expand_call(
         ux_layout_id
         in {
             "WideTwoFullLayout",
-            "WideHeroCompactLayout",
             "WideFullHeroActionLayout",
             "WideHeroActionFullLayout",
             "WideFullTwoCompactLayout",
             "WideFourCompactLayout",
-            "WideFullHeroTwoActionLayout",
             "WideTwoHeroActionLayout",
             "WideFullFourActionLayout",
             "WideHalfTwoCompactLayout",
             "WideHalfCompactTwoLargeActionLayout",
             "WideHalfFourLargeActionLayout",
-            "WideTwoFocusLayout",
             "WideTwoFocusActionLayout",
-            "WideTwoFocusTwoActionLayout",
         }
         and task_spec.size == "2x4"
         and provider_template_layout_kind(wire_id) in {"Full", "Hero", "Compact", "Support"}
@@ -6760,15 +6756,10 @@ def _validate_provider_template_layout_action_requirements(
         )
     wide_composition_contracts = {
         "WideTwoFullLayout": (("Full", "Full"), ()),
-        "WideHeroCompactLayout": (("Hero", "Compact"), ()),
         "WideFullHeroActionLayout": (("Full", "Hero"), ("PillAction",)),
         "WideHeroActionFullLayout": (("Full", "Hero"), ("PillAction",)),
         "WideFullTwoCompactLayout": (("Full", "Compact", "Compact"), ()),
         "WideFourCompactLayout": (("Compact",) * 4, ()),
-        "WideFullHeroTwoActionLayout": (
-            ("Full", "Hero"),
-            ("PillAction", "PillAction"),
-        ),
         "WideFullFourActionLayout": (
             ("Full",),
             ("LargeIconAction",) * 4,
@@ -6784,12 +6775,7 @@ def _validate_provider_template_layout_action_requirements(
             ("WideHalf",),
             ("LargeIconAction",) * 4,
         ),
-        "WideTwoFocusLayout": (("Hero", "Hero"), ()),
         "WideTwoFocusActionLayout": (("Hero", "Hero"), ("PillAction",)),
-        "WideTwoFocusTwoActionLayout": (
-            ("Hero", "Hero"),
-            ("PillAction", "PillAction"),
-        ),
     }
     wide_composition = wide_composition_contracts.get(layout_id)
     if (
