@@ -925,7 +925,8 @@ def _compile_static_layout(
     rows: list[CompactRow] | tuple[CompactRow, ...], size: str
 ) -> SemanticLayoutExpansion:
     from services.generation_content_policy import static_components_for_size
-    from services.static_text_capacity import contract_section, number
+    from services.static_content_layout import static_body_inset, stretches_static_body
+    from services.static_text_capacity import contract_section, number, text_spec
 
     compiler = _Compiler(rows)
     compiler.validate_tree("root", set(), set())
@@ -966,16 +967,30 @@ def _compile_static_layout(
         from services.static_content_components import validate_static_model_props
 
         validate_static_model_props(compiler.node(identifier))
-        compiler.content(identifier, compact=size == "2x2")
+        stretch = identifier == "body" and stretches_static_body(body.component_type, body.props)
+        compiler.content(identifier, compact=size == "2x2", fixed=stretch)
         if identifier == "header":
             children.append(identifier)
         else:
             content_children.append(identifier)
     wrapper = compiler.generated("root", "static_body")
+    padding = number(spec, "padding")
+    body_inset = static_body_inset(body.component_type, body.props, size)
+    body_props = {
+        "width": "matchParent", "layoutWeight": 1, "alignItems": "start",
+        "justifyContent": "start" if body.component_type == "EmphasisText" else "end",
+        "itemMargin": number(spec, "gap"),
+        "padding": {"left": body_inset, "right": body_inset},
+    }
+    root_padding = {"top": padding, "bottom": padding, "left": 0, "right": 0}
+    if "header" in children:
+        header_wrapper = compiler.wrap("root", "static_header", "header", {
+            "padding": {"left": padding, "right": padding},
+            "height": number(text_spec("header"), "lineHeight"),
+        })
+        children = [header_wrapper]
     compiler.add(
-        wrapper, "Column",
-        {"width": "matchParent", "layoutWeight": 1, "alignItems": "start",
-         "justifyContent": "end", "itemMargin": number(spec, "gap")},
+        wrapper, "Column", body_props,
         tuple(content_children), "root",
     )
     children.append(wrapper)
@@ -985,7 +1000,7 @@ def _compile_static_layout(
         {
             "width": "matchParent",
             "height": "matchParent",
-            "padding": number(spec, "padding"),
+            "padding": root_padding,
             "itemMargin": number(spec, "gap"),
             "borderRadius": number(spec, "radius"),
             "clip": True,
