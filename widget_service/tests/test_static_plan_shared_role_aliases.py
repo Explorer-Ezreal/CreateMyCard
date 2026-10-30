@@ -163,7 +163,8 @@ def test_real_required_title_without_legal_candidate_keeps_existing_rejection():
 def test_schema_explains_shared_and_object_aliases_without_removing_canonical_roles():
     tool = build_compact_plan_tool(_task(_plan(), "2x4"))
     fields = tool.get("function", {}).get("parameters", {}).get("properties", {})
-    role = fields.get("info_required", {}).get("items", {}).get("properties", {}).get("displayRole")
+    group_fields = fields.get("contentGroups", {}).get("items", {}).get("properties", {})
+    role = group_fields.get("facts", {}).get("items", {}).get("properties", {}).get("displayRole")
     assert isinstance(role, dict)
     assert {"title", "body", "secondaryText"}.issubset(role.get("enum", []))
     description = role.get("description", "")

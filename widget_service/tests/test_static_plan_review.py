@@ -643,11 +643,10 @@ async def test_confirmed_no_candidate_plan_reaches_dsl_after_invalid_optimizatio
     assert response.errorCode == "VALIDATION_FAILED"
     assert not saved
     fallback = [payload for name, payload in trace_events
-                if name == "static_content.plan.review.fallback"]
+                if name == "static_content.plan.refinement.fallback"]
     assert len(fallback) == 1
     details = fallback[0].get("details", {})
-    assert details.get("hasFeasibleCandidate") is False
-    assert "不代表容量已通过" in details.get("reason", "")
+    assert "保留此前结构合法的静态计划" in details.get("reason", "")
 
 
 @pytest.mark.asyncio
@@ -658,7 +657,7 @@ async def test_two_structurally_valid_plans_without_candidate_keep_the_new_plan(
     corrected["selectionNotes"] = ["继续按原完整内容尝试排版"]
     accepted = _parse_no_candidate(corrected, query)
     service, calls, saved = _service(monkeypatch, [
-        _call(original), _correct(corrected),
+        _call(original), _call(corrected),
     ], dsl_source=dsl)
     response = await service.generate_widget_card_compact_dsl(_request(query, "2x4"))
     assert len(calls) == 3
@@ -667,23 +666,21 @@ async def test_two_structurally_valid_plans_without_candidate_keep_the_new_plan(
 
 
 @pytest.mark.asyncio
-@pytest.mark.parametrize("failure", ["needs_correction", "invalid_review", "timeout"])
-async def test_no_candidate_does_not_bypass_semantic_or_review_failures(monkeypatch, failure):
+async def test_no_candidate_uses_pre_freeze_replan_instead_of_semantic_review(monkeypatch):
     original, query, dsl = _no_candidate_case()
     _parse_no_candidate(original, query)
-    if failure == "needs_correction":
-        review = _correct({"info_required": []}, [_finding("流程安排", [0])])
-    elif failure == "invalid_review":
-        review = {"decision": "correct", "sourceFidelity": "preserved", "findings": []}
-    else:
-        review = TimeoutError("offline timeout")
-    service, calls, saved = _service(monkeypatch, [_call(original), review], dsl_source=dsl)
-    try:
-        response = await service.generate_widget_card_compact_dsl(_request(query, "2x4"))
-    except (A2UIModelGenerationError, TimeoutError):
-        response = None
-    assert response is None or response.status != GenerationStatus.SUCCESS
-    assert len(calls) == 2 and not saved
+    service, calls, saved = _service(
+        monkeypatch,
+        [_call(original), _call(original)],
+        dsl_source=dsl,
+    )
+    response = await service.generate_widget_card_compact_dsl(_request(query, "2x4"))
+    assert response.status != GenerationStatus.SUCCESS and not saved
+    assert len(calls) == 3
+    payload = json.loads(calls[1].get("messages", [])[-1].get("content", ""))
+    assert payload.get("toolResult", {}).get("capacityReference")
+    assert "staticPlanReview" not in json.dumps(calls[1].get("messages"), ensure_ascii=False)
+    assert "原计划尚未冻结" in payload.get("instruction", "")
 
 
 @pytest.mark.asyncio
@@ -692,14 +689,15 @@ async def test_existing_capacity_refinement_and_source_review_share_second_call(
     original = _plan(source, source)
     corrected = _plan("完整说明", source)
     service, calls, saved = _service(monkeypatch, [
-        _call(original), _correct(corrected),
+        _call(original), _call(corrected),
     ], display="完整说明")
     response = await service.generate_widget_card_compact_dsl(_request(source))
     assert response.status == GenerationStatus.SUCCESS
     assert len(calls) == 3 and len(saved) == 1
     messages = calls[1].get("messages", [])
     review = json.loads(messages[-1].get("content", ""))
-    assert review.get("staticPlanReview", {}).get("capacityReference")
+    assert review.get("toolResult", {}).get("capacityReference")
+    assert "重新按用户用途和priority选择" in review.get("instruction", "")
     assert "reviewOutput" not in json.dumps(calls[-1].get("messages"))
 
 

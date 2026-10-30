@@ -11,7 +11,7 @@ description: 组件触发条件、语义字段及单组件示例；样式由Runt
 |---|---|---|---|
 | SingleLineTitle | 概括整卡的共同主题 | title、可选icon | 优先放置主题或主体名称，不与正文重复 |
 | TextList | 两到三条各有主副信息的记录 | items[].primaryText、secondaryText、可选value | 2项必须带SingleLineTitle；3项允许无标题 |
-| SingleLineList | 每项一行可完整表达 | items[].text、assist | 必须与SingleLineTitle标题配套使用；实际容量限制项数 |
+| SingleLineList | 每项一行可完整表达 | items[].text、assist | 必须与SingleLineTitle标题配套使用；最多5项 |
 | EmphasisText | 一项核心结论及其从属说明 | mainText、可选secondaryText与bottomText | 围绕同一对象或结论 |
 
 ## SingleLineTitle
@@ -55,7 +55,7 @@ primaryText和secondaryText固定单行，超出可用宽度时显示省略号�
 仅在记录数为2–3、含标题最多两项且主副字段均能承载时，才改用TextList。
 条件不满足时不要机械换型；生成时按同一对象关系选择其它已登记组件，修复时保持已接受分组及必要公共标题。
 ### 语义字段
-items为非空数组，每项text、assist必填；assist可为文字或数值，数值仍需有可理解的标签与单位。
+items为1–5项，每项text、assist必填；assist可为文字或数值，数值仍需有可理解的标签与单位。
 ### Runtime规则
 按v16 4.9：左侧12/16、400、次要色，右侧12/16、500、主要色；垂直居中，右侧右对齐。
 外观、逐项间距及分布由Runtime提供；完整单行及总高度均须成立。

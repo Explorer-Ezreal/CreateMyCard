@@ -1252,6 +1252,29 @@ class WidgetGenerationService:
                                 details={"reason": "新计划未找到可行候选，保留此前合法候选与计划"},
                             )
                     if content_policy.is_static and attempt < max_plan_attempts:
+                        feedback = validation.plan.get("staticPresentationFeedback")
+                        has_feasible_candidate = bool(validation.plan.get("staticPresentation"))
+                        if not capacity_recovery and feedback and not has_feasible_candidate:
+                            refinement_plan = validation
+                            refinement_source = raw_plan
+                            plan_prompt = PromptBuilder.build_static_plan_refinement(
+                                plan_prompt,
+                                feedback,
+                                allow_priority_degradation=True,
+                            )
+                            trace_increment_retry("planCapacityRefinements")
+                            trace_record(
+                                "static_content.plan.refinement",
+                                stage="plan",
+                                status="scheduled",
+                                details={
+                                    "attempt": attempt,
+                                    "remainingAttempts": 1,
+                                    "mode": "pre_freeze_priority_replan",
+                                },
+                                json_artifacts={"capacity_reference": feedback},
+                            )
+                            continue
                         if not capacity_recovery:
                             review_plan = validation
                             review_source = raw_plan
@@ -1270,7 +1293,6 @@ class WidgetGenerationService:
                                 },
                             )
                             continue
-                        feedback = validation.plan.get("staticPresentationFeedback")
                         if feedback:
                             refinement_plan = validation
                             refinement_source = raw_plan

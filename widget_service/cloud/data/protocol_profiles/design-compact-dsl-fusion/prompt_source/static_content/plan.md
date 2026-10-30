@@ -16,7 +16,7 @@ description: 静态Plan字段、来源引用、索引与提交自查；信息规
 
 | 字段 | 填写方式 | 使用边界 |
 |---|---|---|
-| info_required | 每项requirement、priority和text | 拆分不超过24事实总预算 |
+| contentGroups[].facts | 每项id、requirement、priority和text | 程序按组顺序、组内顺序展开，仍受24事实总预算限制 |
 | text | 最终可读展示版本 | 来源可忠实总结，不必逐字提取或拼接 |
 | sourceTexts | 每项text引用1–3段连续原文；有显式静态事实段时只引用该段 | 每条text须有该段内非空引用 |
 | protectedTexts | 用户明确要求逐字保留的片段 | 普通摘要填[]，不机械保护所有名称和数字 |
@@ -26,11 +26,14 @@ description: 静态Plan字段、来源引用、索引与提交自查；信息规
 
 ## 对象分组与引用
 
-contentGroups每组{id,kind:"object"|"shared",identity:"对象短名称"|null,factIndexes:[0起始索引]}。
-每条text恰好归一组；factIndexes只引用本次info_required，不引用输入材料条目编号或sourceTexts位置。
-合并为两条展示事实后只存在索引0、1；合并或删减事实时同步所有分组及遗漏引用，不沿用来源序号。
+模型只提交嵌套contentGroups，每组为{id,kind:"object"|"shared",identity:"对象短名称"|null,facts:[...]}。
+contentGroups数组顺序就是对象展示顺序，facts数组顺序就是组内事实顺序；每个facts项必须带本组唯一的id。
+禁止输出info_required、contentGroups.factIndexes或任何依赖数组位置的数字索引。程序会按组顺序和组内顺序生成内部事实及索引。
+同一文本位于不同对象时仍分别提交，不因文字相同去重；不得猜测或借用其它组的事实归属。
 
 object表示语义对象；多个对象按原顺序分别对应各自条目，不把显示行数直接当成对象数。
+静态正文最多5个object组；SingleLineTitle和shared公共说明不计入。超过时在本阶段选择至多5个完整对象，
+将未选对象完整记录到omittedContents；不得保留对象名却删除它的数值、条件或说明，也不得把多个对象拼成一条伪对象。
 单一对象的关联事实可合组并连续分行，每行完整承载本组事实，分行标签使用Plan已声明的展示文字。
 shared可声明共同标题或完整公共说明；标题放header，说明放所选正文组件已有字段，不新建note组件。
 公共说明不代替对象事实，不把分散在不同对象里的片段拼成完整说明；同一事实不能跨对象补足。
@@ -70,16 +73,19 @@ identity填写最终要显示的名称；若本组text已含同对象简称，�
 ## 取舍与容量反馈
 
 selectionNotes为最多8条的一个字符串数组，例如["结构选择说明","取舍说明"]，不能把每项再包成数组。
-omittedContents最多24项，每项{description,factIndexes}；没有实际或候选遗漏填[]。
-仍在info_required中的可能省略should填写原事实索引，是否实际省略由最终展示对账；
+omittedContents最多24项，每项{description,factRefs}；factRefs中的每项为{groupId,factId}，没有实际或候选遗漏填[]。
+仍在本组facts中的可能省略should填写稳定factRefs，是否实际省略由最终展示对账；若对象或事实未选入当前Plan，
+必须使用空factRefs，不能引用已经删除或改名的groupId/factId。
 未选择进计划、确实损失的独立输入内容填[]。不得引用must或受保护文字。
-示例：{"description":"可选补充若放不下可省略","factIndexes":[3]}。
+示例：{"description":"可选补充若放不下可省略","factRefs":[{"groupId":"route_a","factId":"traffic"}]}。
 等义摘要、完整出处缩写及按用户要求不列入的未检索内容不算实际遗漏；不能把规划说明当实际省略。
 程序不从description猜事实，不把“可能省略”预先当成实际遗漏。
 
-没有可行试排时，capacityReference会在既有第二次Plan机会反馈；先精简重复表达和规划结构，
-再提交完整新计划。可在冻结前忠实总结，不能删必要限定、改数值或将其假标should。
-反馈只代表有限候选未通过，不代表所有结构不可行，不凭此机械删除对象。
+没有可行试排时，capacityReference会在既有第二次Plan机会反馈；该轮仍在冻结前，必须重新按用户用途
+和priority选择可承载的完整对象组，而不是只换组件后保留原清单。用户未明确要求全部、完整、原文、
+指定条目或受保护文字时，先不选should补充，必要时省略整个低优先级object组并用空factRefs记录；
+不得只删同一对象的名称、数值、日期、条件或说明。可在冻结前忠实总结，不能删必要限定、改数值或将其假标should。
+反馈只代表有限候选未通过，不代表所有结构不可行，不凭此机械删除明确要求的对象。
 
 ## 提交自查
 

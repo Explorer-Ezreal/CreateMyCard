@@ -103,7 +103,106 @@ def test_named_plan_keeps_identity_and_rejects_missing_key_for_new_submissions()
         assert parse_compact_plan_call(raw, task).plan
 
 
-def test_no_eligible_candidate_still_returns_capacity_feedback_without_deleting_plan():
+def test_nested_static_groups_expand_in_group_and_fact_order():
+    nested = {
+        "contentGroups": [
+            {
+                "id": "a",
+                "kind": "object",
+                "identity": "对象甲",
+                "facts": [
+                    {"id": "name", **fact("对象甲", displayRole="title")},
+                    {"id": "detail", **fact("详情甲", displayRole="body")},
+                ],
+            },
+            {
+                "id": "shared",
+                "kind": "shared",
+                "identity": None,
+                "facts": [{"id": "header", **fact("共同主题", priority="should")}],
+            },
+            {
+                "id": "b",
+                "kind": "object",
+                "identity": "对象乙",
+                "facts": [{"id": "name", **fact("对象乙", displayRole="title")}],
+            },
+        ],
+        "omittedContents": [
+            {"description": "可选主题", "factRefs": [{"groupId": "shared", "factId": "header"}]}
+        ],
+    }
+    raw = json.dumps({"name": "submit_card_plan", "arguments": nested}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        accepted = parse_compact_plan_call(
+            raw,
+            {"userQuery": "对象甲详情甲共同主题对象乙", "size": "2x4"},
+        ).plan
+    assert [fact.get("text") for fact in accepted.get("info_required", [])] == [
+        "对象甲", "详情甲", "共同主题", "对象乙",
+    ]
+    assert [group.get("factIndexes") for group in accepted.get("contentGroups", [])] == [
+        [0, 1], [2], [3],
+    ]
+    candidates = accepted.get("omissionCandidates")
+    assert candidates == [{"description": "可选主题", "factIndexes": [2]}]
+
+
+def test_nested_static_groups_reject_mixed_legacy_indexes_and_revoke_unknown_fact_ref():
+    group = {
+        "id": "a",
+        "kind": "object",
+        "identity": None,
+        "facts": [{"id": "body", **fact("内容")}],
+    }
+    mixed = {"info_required": [fact("内容")], "contentGroups": [group]}
+    raw = json.dumps({"name": "submit_card_plan", "arguments": mixed}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        with pytest.raises(CompactPlanValidationError, match="不能同时提交"):
+            parse_compact_plan_call(raw, {"userQuery": "内容", "size": "2x2"})
+    nested = {"contentGroups": [group], "omittedContents": [{
+        "description": "不存在", "factRefs": [{"groupId": "a", "factId": "missing"}],
+    }]}
+    raw = json.dumps({"name": "submit_card_plan", "arguments": nested}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        accepted = parse_compact_plan_call(raw, {"userQuery": "内容", "size": "2x2"}).plan
+    assert accepted.get("omittedContents") == ["不存在"]
+    assert "omissionCandidates" not in accepted
+
+
+def test_nested_static_groups_reject_duplicate_fact_id_and_shared_identity():
+    duplicate = {
+        "contentGroups": [{
+            "id": "a",
+            "kind": "object",
+            "identity": None,
+            "facts": [
+                {"id": "same", **fact("内容甲")},
+                {"id": "same", **fact("内容乙")},
+            ],
+        }],
+        "omittedContents": [],
+    }
+    raw = json.dumps({"name": "submit_card_plan", "arguments": duplicate}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        with pytest.raises(CompactPlanValidationError, match="组内事实 ID 重复"):
+            parse_compact_plan_call(raw, {"userQuery": "内容甲内容乙", "size": "2x2"})
+    shared = {
+        "contentGroups": [{
+            "id": "shared",
+            "kind": "shared",
+            "identity": "不合法名称",
+            "facts": [{"id": "title", **fact("主题")}],
+        }],
+        "omittedContents": [],
+    }
+    raw = json.dumps({"name": "submit_card_plan", "arguments": shared}, ensure_ascii=False)
+    with content_policy_scope(STATIC_CONTENT_POLICY):
+        with pytest.raises(CompactPlanValidationError, match="identity必须为null"):
+            parse_compact_plan_call(raw, {"userQuery": "主题", "size": "2x2"})
+
+
+def test_plan_rejects_more_than_five_complete_object_groups():
     facts = []
     groups = []
     for index in range(7):
@@ -112,14 +211,11 @@ def test_no_eligible_candidate_still_returns_capacity_feedback_without_deleting_
             "id": str(index), "kind": "object", "identity": None, "factIndexes": [index],
         })
     plan = {"info_required": facts, "contentGroups": groups}
-    before = copy.deepcopy(plan)
     query = "；".join(item.get("text", "") for item in facts)
     raw = json.dumps({"name": "submit_card_plan", "arguments": plan})
     with content_policy_scope(STATIC_CONTENT_POLICY):
-        result = parse_compact_plan_call(raw, {"userQuery": query, "size": "2x4"})
-    assert result.plan.get("staticPresentationFeedback")
-    assert result.plan.get("info_required") == before.get("info_required")
-    assert plan == before
+        with pytest.raises(CompactPlanValidationError, match="最多五条完整对象信息"):
+            parse_compact_plan_call(raw, {"userQuery": query, "size": "2x4"})
 
 
 def test_plan_rejects_conflicting_record_component_and_row_style():

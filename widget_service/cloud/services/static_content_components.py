@@ -375,8 +375,8 @@ class _Builder:
     def single_lines(self, props: dict[str, Any]) -> None:
         values = _fields(props, {"items"}, "SingleLineList")
         items = values.get("items")
-        if not isinstance(items, list) or not 1 <= len(items) <= 24:
-            _fail("SingleLineList.items 必须为非空条目数组，最多24项并须通过容量校验。")
+        if not isinstance(items, list) or not 1 <= len(items) <= 5:
+            _fail("SingleLineList.items 必须为1–5项；静态正文最多五条信息，标题不计入。")
         spec = component_spec("SingleLineList")
         gap = number(spec, "gap")
         side_gap = number(spec, "sideGap")
