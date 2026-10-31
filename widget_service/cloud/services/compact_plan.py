@@ -319,6 +319,11 @@ def build_compact_plan_tool(
         "Layout、Region、Group 的名称及 variant 只能逐字使用当前尺寸文档登记的完整值，"
         "不得自行缩写、拼接或增删后缀。选择布局候选前确认全部必要事实与动作都有合法落点。"
     )
+    if size == "2x2":
+        description += (
+            "若提交两个不同的独立动作，正文只能选择至多两条完整非动作信息组；"
+            "超量内容须在本阶段按 priority 取舍，不交给 TableText 或 DSL 修复。"
+        )
     if size == "2x2" and not include_composition:
         description += (
             "单业务唯一天气城市详情或单条日程详情，未明确要求按钮时，由服务端判断整卡点击。"
@@ -1884,6 +1889,12 @@ def parse_compact_plan_call(
         task_spec.get("size"),
     )
     warnings.extend(dual_action_warnings)
+    dual_action_body_errors = _two_by_two_dual_action_body_errors(
+        facts,
+        task_spec.get("size"),
+    )
+    if dual_action_body_errors:
+        raise CompactPlanValidationError(dual_action_body_errors)
     layout_hints, action_layout_warnings = _normalize_two_by_four_action_layouts(
         facts,
         layout_hints,
@@ -3901,6 +3912,23 @@ def _is_two_by_two_dual_action_plan(
     if size != "2x2":
         return False
     return _has_two_distinct_actions(facts)
+
+
+def _two_by_two_dual_action_body_errors(
+    facts: list[dict[str, Any]],
+    size: Any,
+) -> list[str]:
+    """双动作小卡的正文仅能规划两条完整信息组。"""
+    if not _is_two_by_two_dual_action_plan(facts, size):
+        return []
+    body_fact_count = sum(1 for fact in facts if not _requires_action_button(fact))
+    if body_fact_count <= 2:
+        return []
+    return [
+        "2x2 双动作布局的正文最多两条完整信息组；"
+        "请在 Plan 阶段按 priority 重新选择至多两条非动作事实，"
+        "保留两个动作，不要把超量事实交给 TableText 或 DSL 修复。"
+    ]
 
 
 def _has_two_distinct_actions(facts: Any) -> bool:
