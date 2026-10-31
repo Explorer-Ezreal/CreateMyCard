@@ -119,3 +119,14 @@ def test_valid_single_action_plan_unchanged(size: str, hints: list[str]) -> None
     result = _parse(facts, hints, size)
     assert result.plan == {"info_required": facts, "layoutHints": hints}
     assert result.warnings == ()
+
+
+def test_wide_action_context_forbids_top_bottom_and_requires_reachable_button() -> None:
+    facts = [_data(), _action("event.company")]
+    result = _parse(facts, ["W-top-bottom"], "2x4")
+
+    context = compact_plan_context(result.plan)
+
+    assert result.plan.get("layoutHints") == ["W-content-side-slots", "W-split-panels"]
+    assert "W-top-bottom只允许[标题?, 主体, 明细]" in context
+    assert "定义游离按钮" in context

@@ -1306,11 +1306,12 @@ def test_two_by_four_action_plan_removes_top_bottom_layout_hint() -> None:
     assert result.plan.get("layoutHints") == ["W-content-side-slots"]
     assert result.warnings[-1] == (
         "W-top-bottom was removed from layoutHints because the 2x4 Plan contains "
-        "an Action and this layout has no legal action slot."
+        "an Action and this layout has no legal action slot; action-compatible "
+        "layout hints were supplied."
     )
 
 
-def test_two_by_four_action_plan_does_not_invent_replacement_layout_hint() -> None:
+def test_two_by_four_action_plan_supplies_action_compatible_layout_hints() -> None:
     spec = task_spec()
     spec["size"] = "2x4"
     payload = json.loads(plan_call())
@@ -1320,10 +1321,11 @@ def test_two_by_four_action_plan_does_not_invent_replacement_layout_hint() -> No
 
     result = parse_compact_plan_call(json.dumps(payload, ensure_ascii=False), spec)
 
-    assert "layoutHints" not in result.plan
+    assert result.plan.get("layoutHints") == ["W-content-side-slots", "W-split-panels"]
     assert result.warnings[-1] == (
         "W-top-bottom was removed from layoutHints because the 2x4 Plan contains "
-        "an Action and this layout has no legal action slot."
+        "an Action and this layout has no legal action slot; action-compatible "
+        "layout hints were supplied."
     )
 
 

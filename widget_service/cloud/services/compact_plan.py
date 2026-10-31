@@ -2133,6 +2133,19 @@ def compact_plan_context(
             "不能删动作、改为子节点点击或因修复补回按钮。该动作没有按钮图标。"
         )
     facts = plan.get("info_required")
+    wide_action_instruction = ""
+    has_wide_button_action = (
+        isinstance(facts, list)
+        and not whole_card_instruction
+        and any(_requires_action_button(fact) for fact in facts)
+    )
+    if has_wide_button_action:
+        wide_action_instruction = (
+            "本轮2x4包含独立按钮动作：W-top-bottom只允许[标题?, 主体, 明细]，"
+            "没有动作角色，禁止选择它、追加根子节点或定义游离按钮。"
+            "仅从W-content-side-slots、W-split-panels或其它登记的动作兼容布局中，"
+            "为每个动作安排可从root到达的合法按钮槽。"
+        )
     fixed_dual_action = (
         plan.get("layoutHints") == ["S-content-dual-action"]
         and _has_two_distinct_actions(facts)
@@ -2214,6 +2227,7 @@ def compact_plan_context(
             "局部修复保持待修树的合法结构，只处理明确错误。"
             f"{asset_instruction}"
             f"{whole_card_instruction}"
+            f"{wide_action_instruction}"
             f"{pure_action_instruction}"
             "按参考蓝图的父子关系和事实索引落实真实绑定、完整文案与所属动作；"
             "索引从0开始，不能把索引或压力样值写入最终 DSL。标题绑定保留指定标题职责。"
@@ -2252,6 +2266,7 @@ def compact_plan_context(
         "TaskSpec 中对应 actionId 的完整事件候选。最终组件与布局仍按完整合同和容量选择。\n"
         f"{asset_instruction}\n"
         f"{whole_card_instruction}\n"
+        f"{wide_action_instruction}\n"
         "若有 composition，按它的 layout/variant、region.path 与顺序 groups 实现，"
         "factIndexes 引用下面去重后的 info_required，placements 指明每条事实的可见 Prop。"
         "空映射 SingleLineTitle 只是装饰标题的容量预留，不是遗漏事实；"
@@ -3838,9 +3853,12 @@ def _normalize_two_by_four_action_layouts(
         return layout_hints, []
 
     accepted = [layout for layout in layout_hints if layout != "W-top-bottom"]
+    if not accepted:
+        accepted = ["W-content-side-slots", "W-split-panels"]
     warning = (
         "W-top-bottom was removed from layoutHints because the 2x4 Plan contains "
-        "an Action and this layout has no legal action slot."
+        "an Action and this layout has no legal action slot; action-compatible "
+        "layout hints were supplied."
     )
     return accepted, [warning]
 
